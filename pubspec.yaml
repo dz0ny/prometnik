@@ -1,0 +1,64 @@
+name: promet
+description: "Vreme in kamere na slovenskih cestah (DARS / ceste.si)."
+publish_to: 'none'
+
+# Version format: YYYY.MMDD.DAILY+BUILD (see Makefile)
+version: 2026.0522.1+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Map
+  flutter_map: any
+  latlong2: any
+
+  # Networking
+  http: any
+
+  # Image caching (webcam thumbnails)
+  cached_network_image: any
+
+  # Routing
+  go_router: any
+
+  # State management
+  provider: any
+
+  # Utilities
+  intl: any
+  shared_preferences: any
+  url_launcher: any
+  package_info_plus: any
+
+  # Platform-adaptive UI (Material on Android, Cupertino/iOS 26 on iOS)
+  adaptive_platform_ui: ^0.1.107
+  cupertino_icons: ^1.0.9
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: any
+  flutter_launcher_icons: any
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  remove_alpha_ios: true
+  image_path: "icon.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "icon.png"
+    background_color: "#0D1B2A"
+    theme_color: "#1B263B"
+  macos:
+    generate: true
+    image_path: "icon.png"
+
+flutter:
+  uses-material-design: true
