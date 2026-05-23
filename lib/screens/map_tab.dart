@@ -383,10 +383,12 @@ class MapTabState extends State<MapTab> {
                             in context.watch<RestAreasProvider>().items)
                           Marker(
                             point: area.position,
-                            width: 26,
+                            width: area.hasLiveAvailability ? 78 : 26,
                             height: 26,
                             child: _RestAreaMarker(
                               color: restAreaColor(area.availabilityColor),
+                              available: area.available,
+                              total: area.total,
                               onTap: () => showRestAreaSheet(context, area),
                             ),
                           ),
@@ -559,28 +561,107 @@ class _CameraMarker extends StatelessWidget {
   }
 }
 
-/// A square pin for a rest area, tinted by parking availability.
+/// A rest-area pin tinted by parking availability. When live data is present
+/// it becomes a pill showing the free/total space count next to a "P" badge;
+/// otherwise it falls back to a compact square "P".
 class _RestAreaMarker extends StatelessWidget {
   final Color color;
+  final int available;
+  final int total;
   final VoidCallback onTap;
 
-  const _RestAreaMarker({required this.color, required this.onTap});
+  const _RestAreaMarker({
+    required this.color,
+    required this.available,
+    required this.total,
+    required this.onTap,
+  });
+
+  bool get _live => total > 0;
 
   @override
   Widget build(BuildContext context) {
+    const shadow = [
+      BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1)),
+    ];
+
+    if (!_live) {
+      return GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.white, width: 1.5),
+            boxShadow: shadow,
+          ),
+          child: const Icon(Icons.local_parking, size: 15, color: Colors.white),
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Colors.white, width: 1.5),
-          boxShadow: const [
-            BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1)),
-          ],
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(3, 3, 8, 3),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: Colors.white, width: 1.5),
+            boxShadow: shadow,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // "P" badge in a white circle.
+              Container(
+                width: 18,
+                height: 18,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  'P',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              // Free count, emphasised, over the total.
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: '$available'),
+                    TextSpan(
+                      text: '/$total',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        child: const Icon(Icons.local_parking, size: 15, color: Colors.white),
       ),
     );
   }
