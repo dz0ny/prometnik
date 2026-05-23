@@ -82,6 +82,13 @@ class _AboutScreenState extends State<AboutScreen> {
               trailing: const Icon(Icons.open_in_new),
               onTap: () => _open('https://kamere.dars.si/'),
             ),
+            AdaptiveListTile(
+              leading: const Icon(Icons.map),
+              title: const Text('Cestno omrežje'),
+              subtitle: const Text('© OpenStreetMap contributors (ODbL)'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () => _open('https://www.openstreetmap.org/copyright'),
+            ),
             const SizedBox(height: 24),
             Text(
               'Podatki so informativne narave. Aplikacija ni uradni produkt DARS.',

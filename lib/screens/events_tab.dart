@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/traffic_event.dart';
 import '../providers/events_provider.dart';
+import '../services/prefs.dart';
 import '../theme/app_theme.dart';
 import '../widgets/event_sheet.dart';
 import '../widgets/event_visuals.dart';
@@ -27,10 +28,48 @@ class _EventsTabState extends State<EventsTab> {
     EventSeverity.other,
   ];
 
-  /// Active severity filters; all on by default.
+  static const List<EventSource> _sourceOrder = [
+    EventSource.drsi,
+    EventSource.dars,
+    EventSource.other,
+  ];
+
+  /// Active severity / source filters; all on by default, restored from prefs.
   final Set<EventSeverity> _active = {..._order};
+  final Set<EventSource> _sourceActive = {..._sourceOrder};
 
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (Prefs.has('events.severities')) {
+      final saved = Prefs.getStringList('events.severities', const []);
+      _active
+        ..clear()
+        ..addAll(saved.map(_severityByName).whereType<EventSeverity>());
+    }
+    if (Prefs.has('events.sources')) {
+      final saved = Prefs.getStringList('events.sources', const []);
+      _sourceActive
+        ..clear()
+        ..addAll(saved.map(_sourceByName).whereType<EventSource>());
+    }
+  }
+
+  static EventSeverity? _severityByName(String n) {
+    for (final s in EventSeverity.values) {
+      if (s.name == n) return s;
+    }
+    return null;
+  }
+
+  static EventSource? _sourceByName(String n) {
+    for (final s in EventSource.values) {
+      if (s.name == n) return s;
+    }
+    return null;
+  }
 
   /// Free-text match across all of an event's text fields.
   bool _matchesQuery(TrafficEvent e) {
@@ -77,9 +116,11 @@ class _EventsTabState extends State<EventsTab> {
               );
             }
 
-            // Apply the text search, then bucket by severity (counts drive the
-            // filter sheet and section headers).
-            final matched = provider.events.where(_matchesQuery).toList();
+            // Apply the text search + source filter, then bucket by severity
+            // (counts drive the filter sheet and section headers).
+            final matched = provider.events
+                .where((e) => _matchesQuery(e) && _sourceActive.contains(e.source))
+                .toList();
             final buckets = {for (final s in _order) s: <TrafficEvent>[]};
             for (final e in matched) {
               buckets[e.severity]!.add(e);
@@ -138,20 +179,48 @@ class _EventsTabState extends State<EventsTab> {
     );
   }
 
-  int get _activeFilterCount =>
-      _active.length == _order.length ? 0 : _active.length;
+  int get _activeFilterCount {
+    var n = 0;
+    if (_active.length != _order.length) n += _active.length;
+    if (_sourceActive.length != _sourceOrder.length) n += _sourceActive.length;
+    return n;
+  }
 
   void _openFilters(Map<EventSeverity, List<TrafficEvent>> buckets) {
     final pending = {..._active};
+    final pendingSrc = {..._sourceActive};
+    final events = context.read<EventsProvider>().events;
+    int srcCount(EventSource s) => events.where((e) => e.source == s).length;
+
     showFilterSheet(
       context: context,
       title: 'Filtri dogodkov',
-      onReset: () => pending
-        ..clear()
-        ..addAll(_order),
-      onApply: () => setState(() => _active
-        ..clear()
-        ..addAll(pending)),
+      onReset: () {
+        pending
+          ..clear()
+          ..addAll(_order);
+        pendingSrc
+          ..clear()
+          ..addAll(_sourceOrder);
+      },
+      onApply: () {
+        setState(() {
+          _active
+            ..clear()
+            ..addAll(pending);
+          _sourceActive
+            ..clear()
+            ..addAll(pendingSrc);
+        });
+        Prefs.setStringList(
+          'events.severities',
+          _active.map((s) => s.name).toList(),
+        );
+        Prefs.setStringList(
+          'events.sources',
+          _sourceActive.map((s) => s.name).toList(),
+        );
+      },
       contentBuilder: (setSheet) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -178,6 +247,33 @@ class _EventsTabState extends State<EventsTab> {
                         pending.add(s);
                       } else {
                         pending.remove(s);
+                      }
+                    }),
+                  ),
+                ],
+              ),
+            ),
+          const FilterSectionLabel('Vir'),
+          for (final s in _sourceOrder)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(EventVisuals.sourceIcon(s)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '${EventVisuals.sourceLabel(s)} (${srcCount(s)})',
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                  ),
+                  AdaptiveSwitch(
+                    value: pendingSrc.contains(s),
+                    onChanged: (v) => setSheet(() {
+                      if (v) {
+                        pendingSrc.add(s);
+                      } else {
+                        pendingSrc.remove(s);
                       }
                     }),
                   ),

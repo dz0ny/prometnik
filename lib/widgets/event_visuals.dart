@@ -51,4 +51,16 @@ class EventVisuals {
     EventSeverity.roadworks => 'Dela',
     EventSeverity.other => 'Opozorilo',
   };
+
+  static String sourceLabel(EventSource s) => switch (s) {
+    EventSource.drsi => 'DRSI',
+    EventSource.dars => 'DARS',
+    EventSource.other => 'Drugo',
+  };
+
+  static IconData sourceIcon(EventSource s) => switch (s) {
+    EventSource.dars => Icons.add_road,
+    EventSource.drsi => Icons.account_balance,
+    EventSource.other => Icons.location_city,
+  };
 }

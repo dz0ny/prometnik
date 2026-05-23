@@ -1,13 +1,18 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../models/traffic_camera.dart';
 import '../models/weather_station.dart';
+import '../providers/cameras_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/weather_provider.dart';
 import '../router/route_names.dart';
+import '../services/prefs.dart';
 import '../theme/app_theme.dart';
+import '../widgets/camera_sheet.dart';
 import '../widgets/filter_sheet.dart';
 import '../widgets/webcam_image.dart';
 import '../widgets/weather_details.dart';
@@ -30,12 +35,29 @@ class ListTab extends StatefulWidget {
 class _ListTabState extends State<ListTab> {
   String _query = '';
   bool _onlyFavorites = false;
+  bool _showDarsCameras = true;
   _KindFilter _kind = _KindFilter.all;
   final int _refreshKey = DateTime.now().millisecondsSinceEpoch;
 
   FavoritesProvider? _favs;
   bool _favInitDone = false;
   int _lastFavCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Restore saved filters.
+    _onlyFavorites = Prefs.getBool('list.onlyFavorites', false);
+    _showDarsCameras = Prefs.getBool('list.darsCameras', true);
+    final ki = Prefs.getInt('list.kind', 0);
+    _kind = _KindFilter.values[ki.clamp(0, _KindFilter.values.length - 1)];
+  }
+
+  void _saveListFilters() {
+    Prefs.setBool('list.onlyFavorites', _onlyFavorites);
+    Prefs.setBool('list.darsCameras', _showDarsCameras);
+    Prefs.setInt('list.kind', _kind.index);
+  }
 
   @override
   void didChangeDependencies() {
@@ -48,8 +70,11 @@ class _ListTabState extends State<ListTab> {
     if (!_favInitDone) {
       _favInitDone = true;
       _lastFavCount = favs.count;
-      // Default to the favourites view if the user already has some.
-      if (favs.hasAny) _onlyFavorites = true;
+      // Default to the favourites view if the user has some — but only when
+      // they haven't set an explicit preference before.
+      if (!Prefs.has('list.onlyFavorites') && favs.hasAny) {
+        _onlyFavorites = true;
+      }
     }
   }
 
@@ -60,8 +85,10 @@ class _ListTabState extends State<ListTab> {
     final count = _favs?.count ?? 0;
     if (_lastFavCount == 0 && count > 0 && !_onlyFavorites) {
       setState(() => _onlyFavorites = true);
+      _saveListFilters();
     } else if (count == 0 && _onlyFavorites) {
       setState(() => _onlyFavorites = false);
+      _saveListFilters();
     }
     _lastFavCount = count;
   }
@@ -88,43 +115,56 @@ class _ListTabState extends State<ListTab> {
     return true;
   }
 
-  /// Turns the filtered, name-sorted [stations] into a flat list of section
-  /// headers (String) and stations (WeatherStation). When not in
-  /// favourites-only mode, favourite stations are surfaced in a leading
-  /// "Priljubljene" section; everything is then grouped by first letter.
-  List<({String title, List<WeatherStation> stations})> _buildGroups(
+  bool _matchesCamera(TrafficCamera c) {
+    if (_query.isEmpty) return true;
+    return c.title.toLowerCase().contains(_query) ||
+        c.region.toLowerCase().contains(_query);
+  }
+
+  /// Groups the filtered stations and DARS cameras into section cards. In
+  /// favourites-only mode, favourite stations are shown as full-width webcam
+  /// heroes; otherwise favourites lead, then everything (stations + cameras) is
+  /// grouped alphabetically by name. Items are [WeatherStation] or
+  /// [TrafficCamera].
+  List<({String title, List<Object> items})> _buildGroups(
     List<WeatherStation> stations,
+    List<TrafficCamera> cameras,
     FavoritesProvider favs,
   ) {
-    final groups = <({String title, List<WeatherStation> stations})>[];
+    final groups = <({String title, List<Object> items})>[];
 
-    // Favourites-only: every station is a favourite, so show them all as
-    // full-width webcam hero cards (no alphabetical small rows).
     if (_onlyFavorites) {
       if (stations.isNotEmpty) {
-        groups.add((title: _kFavoritesTitle, stations: stations));
+        groups.add((title: _kFavoritesTitle, items: List<Object>.of(stations)));
       }
       return groups;
     }
 
-    // Otherwise surface favourites as a leading hero section, then group the
-    // full list alphabetically as compact rows.
     final favStations =
         stations.where((s) => favs.isFavorite(s.stationId)).toList();
     if (favStations.isNotEmpty) {
-      groups.add((title: _kFavoritesTitle, stations: favStations));
+      groups.add((
+        title: _kFavoritesTitle,
+        items: List<Object>.of(favStations),
+      ));
     }
 
+    // Merge stations + cameras, sorted by display name.
+    final entries = <({String name, Object item})>[
+      for (final s in stations) (name: s.name, item: s),
+      for (final c in cameras) (name: c.title, item: c),
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
     String? letter;
-    List<WeatherStation>? bucket;
-    for (final s in stations) {
-      final initial = s.name.isNotEmpty ? s.name[0].toUpperCase() : '#';
+    List<Object>? bucket;
+    for (final e in entries) {
+      final initial = e.name.isNotEmpty ? e.name[0].toUpperCase() : '#';
       if (initial != letter) {
         letter = initial;
         bucket = [];
-        groups.add((title: initial, stations: bucket));
+        groups.add((title: initial, items: bucket));
       }
-      bucket!.add(s);
+      bucket!.add(e.item);
     }
     return groups;
   }
@@ -146,13 +186,13 @@ class _ListTabState extends State<ListTab> {
                   Expanded(
                     child: PlatformInfo.isIOS
                         ? CupertinoSearchTextField(
-                            placeholder: 'Išči postajo…',
+                            placeholder: 'Išči kamero…',
                             onChanged: (v) => setState(
                               () => _query = v.toLowerCase().trim(),
                             ),
                           )
                         : AdaptiveTextField(
-                            placeholder: 'Išči postajo…',
+                            placeholder: 'Išči kamero…',
                             prefixIcon: const Icon(Icons.search),
                             onChanged: (v) => setState(
                               () => _query = v.toLowerCase().trim(),
@@ -181,12 +221,23 @@ class _ListTabState extends State<ListTab> {
                   final stations = provider.stations
                       .where((s) => _matches(s, favs))
                       .toList();
+                  // DARS cameras join the list unless filtered out.
+                  final cameras =
+                      (_showDarsCameras &&
+                          !_onlyFavorites &&
+                          _kind != _KindFilter.weather)
+                      ? context
+                            .watch<CamerasProvider>()
+                            .cameras
+                            .where(_matchesCamera)
+                            .toList()
+                      : <TrafficCamera>[];
 
-                  if (stations.isEmpty) {
+                  if (stations.isEmpty && cameras.isEmpty) {
                     return _empty(context);
                   }
 
-                  final groups = _buildGroups(stations, favs);
+                  final groups = _buildGroups(stations, cameras, favs);
 
                   return RefreshIndicator(
                     onRefresh: provider.refresh,
@@ -199,7 +250,7 @@ class _ListTabState extends State<ListTab> {
                       itemCount: groups.length,
                       itemBuilder: (context, i) => _SectionCard(
                         title: groups[i].title,
-                        stations: groups[i].stations,
+                        items: groups[i].items,
                         refreshKey: _refreshKey,
                         isFavorites: groups[i].title == _kFavoritesTitle,
                       ),
@@ -215,11 +266,14 @@ class _ListTabState extends State<ListTab> {
   }
 
   int get _activeFilterCount =>
-      (_kind != _KindFilter.all ? 1 : 0) + (_onlyFavorites ? 1 : 0);
+      (_kind != _KindFilter.all ? 1 : 0) +
+      (_onlyFavorites ? 1 : 0) +
+      (_showDarsCameras ? 0 : 1);
 
   void _openFilters() {
     var pendingKind = _kind;
     var pendingFav = _onlyFavorites;
+    var pendingDars = _showDarsCameras;
     final favCount = context.read<FavoritesProvider>().count;
 
     showFilterSheet(
@@ -228,11 +282,16 @@ class _ListTabState extends State<ListTab> {
       onReset: () {
         pendingKind = _KindFilter.all;
         pendingFav = false;
+        pendingDars = true;
       },
-      onApply: () => setState(() {
-        _kind = pendingKind;
-        _onlyFavorites = pendingFav;
-      }),
+      onApply: () {
+        setState(() {
+          _kind = pendingKind;
+          _onlyFavorites = pendingFav;
+          _showDarsCameras = pendingDars;
+        });
+        _saveListFilters();
+      },
       contentBuilder: (setSheet) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -259,6 +318,17 @@ class _ListTabState extends State<ListTab> {
               AdaptiveSwitch(
                 value: pendingFav,
                 onChanged: (v) => setSheet(() => pendingFav = v),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text('DARS kamere', style: TextStyle(fontSize: 15)),
+              ),
+              AdaptiveSwitch(
+                value: pendingDars,
+                onChanged: (v) => setSheet(() => pendingDars = v),
               ),
             ],
           ),
@@ -328,13 +398,15 @@ class _ListTabState extends State<ListTab> {
 /// rounded Material card on Android, with an uppercase header above the rows.
 class _SectionCard extends StatelessWidget {
   final String title;
-  final List<WeatherStation> stations;
+
+  /// Each item is a [WeatherStation] or a [TrafficCamera].
+  final List<Object> items;
   final int refreshKey;
   final bool isFavorites;
 
   const _SectionCard({
     required this.title,
-    required this.stations,
+    required this.items,
     required this.refreshKey,
     this.isFavorites = false,
   });
@@ -345,6 +417,7 @@ class _SectionCard extends StatelessWidget {
 
     // Favourites get a prominent, full-width webcam hero per station.
     if (isFavorites) {
+      final stations = items.whereType<WeatherStation>().toList();
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: Column(
@@ -378,10 +451,15 @@ class _SectionCard extends StatelessWidget {
     }
 
     final rows = <Widget>[];
-    for (var i = 0; i < stations.length; i++) {
-      rows.add(_StationRow(station: stations[i], refreshKey: refreshKey));
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      rows.add(
+        item is WeatherStation
+            ? _StationRow(station: item, refreshKey: refreshKey)
+            : _CameraRow(camera: item as TrafficCamera, refreshKey: refreshKey),
+      );
       // iOS draws its own row separators; Android needs explicit hairlines.
-      if (!PlatformInfo.isIOS && i < stations.length - 1) {
+      if (!PlatformInfo.isIOS && i < items.length - 1) {
         rows.add(
           Divider(
             height: 1,
@@ -604,6 +682,87 @@ class _FavoriteHeroCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A compact row for a DARS camera (thumbnail, name, region). Tap opens the
+/// camera viewer.
+class _CameraRow extends StatelessWidget {
+  final TrafficCamera camera;
+  final int refreshKey;
+
+  const _CameraRow({required this.camera, required this.refreshKey});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final url = camera.imageUrlWithBuster(refreshKey);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showCameraSheet(context, camera),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 64,
+                height: 48,
+                child: ColoredBox(
+                  color: Colors.black,
+                  child: CachedNetworkImage(
+                    imageUrl: url,
+                    cacheKey: url,
+                    fit: BoxFit.cover,
+                    placeholder: (_, _) => const ColoredBox(color: Colors.black),
+                    errorWidget: (_, _, _) => const Icon(
+                      Icons.videocam_off,
+                      color: Colors.white38,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    camera.title.isEmpty ? 'Kamera' : camera.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    camera.description.isNotEmpty
+                        ? camera.description
+                        : camera.region,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.photo_camera, size: 18, color: cs.onSurfaceVariant),
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+          ],
         ),
       ),
     );

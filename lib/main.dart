@@ -2,16 +2,19 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'providers/cameras_provider.dart';
 import 'providers/events_provider.dart';
 import 'providers/favorites_provider.dart';
 import 'providers/travel_times_provider.dart';
 import 'providers/weather_provider.dart';
 import 'router/app_router.dart';
 import 'router/navigation_notifier.dart';
+import 'services/prefs.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Prefs.init();
   runApp(const PrometApp());
 }
 
@@ -43,6 +46,7 @@ class _PrometAppState extends State<PrometApp> {
       providers: [
         ChangeNotifierProvider(create: (_) => WeatherProvider()..start()),
         ChangeNotifierProvider(create: (_) => EventsProvider()..start()),
+        ChangeNotifierProvider(create: (_) => CamerasProvider()..start()),
         ChangeNotifierProvider(create: (_) => TravelTimesProvider()..start()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()..load()),
         ChangeNotifierProvider(create: (_) => NavigationNotifier()),

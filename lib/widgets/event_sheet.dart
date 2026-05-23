@@ -1,9 +1,15 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../models/traffic_camera.dart';
 import '../models/traffic_event.dart';
+import '../providers/cameras_provider.dart';
+import '../router/navigation_notifier.dart';
+import '../services/roads_service.dart';
+import 'camera_sheet.dart';
 import 'event_marker.dart';
 import 'event_visuals.dart';
 import 'weather_details.dart' show WeatherFormat;
@@ -39,6 +45,42 @@ class EventSheet extends StatelessWidget {
     }
   }
 
+  /// DARS cameras whose location falls within the event's affected-area bbox,
+  /// shown as full-width live images.
+  List<Widget> _camerasSection(BuildContext context, ColorScheme cs) {
+    if (!event.hasArea) return const [];
+    final sw = event.areaSouthWest!, ne = event.areaNorthEast!;
+    final cams = context.watch<CamerasProvider>().cameras.where((c) {
+      final p = c.position;
+      return p.latitude >= sw.latitude &&
+          p.latitude <= ne.latitude &&
+          p.longitude >= sw.longitude &&
+          p.longitude <= ne.longitude;
+    }).toList();
+    if (cams.isEmpty) return const [];
+    return [
+      const SizedBox(height: 16),
+      Row(
+        children: [
+          Icon(Icons.photo_camera, size: 16, color: cs.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text(
+            'Kamere v območju (${cams.length})',
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+      for (final c in cams) ...[
+        const SizedBox(height: 10),
+        _EventCameraCard(camera: c),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -72,6 +114,7 @@ class EventSheet extends StatelessWidget {
               _Hero(event: event),
               const SizedBox(height: 14),
               _MiniMap(event: event),
+              ..._camerasSection(context, cs),
               if (event.description.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Text(
@@ -225,87 +268,230 @@ class _Hero extends StatelessWidget {
   }
 }
 
-/// A small, non-interactive map preview of where the event is.
-class _MiniMap extends StatelessWidget {
+/// A small, non-interactive map preview of where the event is. When the event
+/// has an affected-area bbox, the roads inside it are highlighted in the
+/// severity colour (the closest we can get to the affected route from open
+/// data — see RoadsService).
+class _MiniMap extends StatefulWidget {
   final TrafficEvent event;
 
   const _MiniMap({required this.event});
 
   @override
+  State<_MiniMap> createState() => _MiniMapState();
+}
+
+class _MiniMapState extends State<_MiniMap> {
+  List<RoadLine> _roads = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.event;
+    if (e.hasArea) {
+      final sw = e.areaSouthWest!, ne = e.areaNorthEast!;
+      RoadsService.instance
+          .roadsIn(sw.longitude, sw.latitude, ne.longitude, ne.latitude)
+          .then((roads) {
+            if (mounted) setState(() => _roads = roads);
+          });
+    }
+  }
+
+  void _jumpToMap() {
+    context.read<NavigationNotifier>().showLocationOnMap(widget.event.position);
+    Navigator.of(context).pop();
+  }
+
+  Widget _roadLayer(Color color) {
+    final eref = eventRoadRef(widget.event.road);
+    final matched = _roads.where((r) => roadRefMatches(eref, r.ref)).toList();
+    final others = _roads.where((r) => !roadRefMatches(eref, r.ref)).toList();
+    final hasMatch = matched.isNotEmpty;
+    return PolylineLayer(
+      polylines: [
+        // Context roads (faint when a specific road is matched, else moderate).
+        for (final r in others)
+          Polyline(
+            points: r.points,
+            color: color.withValues(alpha: hasMatch ? 0.3 : 0.85),
+            strokeWidth: hasMatch ? 2 : 4,
+          ),
+        // The matched road, drawn prominently on top.
+        for (final r in matched)
+          Polyline(
+            points: r.points,
+            color: color,
+            strokeWidth: 5,
+            borderColor: Colors.white.withValues(alpha: 0.7),
+            borderStrokeWidth: 1,
+          ),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final event = widget.event;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = EventVisuals.color(event.severity);
 
-    // Fit to the affected-area bbox when present, else centre on the point.
     final hasArea = event.hasArea;
     final bounds = hasArea
         ? LatLngBounds(event.areaSouthWest!, event.areaNorthEast!)
         : null;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
-        height: 170,
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: event.position,
-            initialZoom: 13,
-            initialCameraFit: bounds == null
-                ? null
-                : CameraFit.bounds(
-                    bounds: bounds,
-                    padding: const EdgeInsets.all(28),
-                    maxZoom: 15,
+    return GestureDetector(
+      onTap: _jumpToMap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 170,
+          child: Stack(
+            children: [
+              FlutterMap(
+                options: MapOptions(
+                  initialCenter: event.position,
+                  initialZoom: 13,
+                  initialCameraFit: bounds == null
+                      ? null
+                      : CameraFit.bounds(
+                          bounds: bounds,
+                          padding: const EdgeInsets.all(28),
+                          maxZoom: 15,
+                        ),
+                  // Static preview — the sheet handles the tap (jump to map).
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
                   ),
-            // Static preview — let the sheet handle gestures.
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.none,
-            ),
-          ),
-          children: [
-            TileLayer(
-              urlTemplate: isDark
-                  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                  : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
-              retinaMode: isDark && RetinaMode.isHighDensity(context),
-              userAgentPackageName: 'dev.dz0ny.promet',
-              maxZoom: 19,
-            ),
-            // Affected-area extent (bbox) drawn as a translucent rectangle.
-            if (hasArea)
-              PolygonLayer(
-                polygons: [
-                  Polygon(
-                    points: [
-                      event.areaSouthWest!,
-                      LatLng(
-                        event.areaSouthWest!.latitude,
-                        event.areaNorthEast!.longitude,
-                      ),
-                      event.areaNorthEast!,
-                      LatLng(
-                        event.areaNorthEast!.latitude,
-                        event.areaSouthWest!.longitude,
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: isDark
+                        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
+                    retinaMode: isDark && RetinaMode.isHighDensity(context),
+                    userAgentPackageName: 'dev.dz0ny.promet',
+                    maxZoom: 19,
+                  ),
+                  // Roads within the affected area. The road matching the
+                  // event's number is emphasised; others provide faint context.
+                  if (_roads.isNotEmpty) _roadLayer(color),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: event.position,
+                        width: 28,
+                        height: 28,
+                        child: EventMarker(event: event, onTap: _jumpToMap),
                       ),
                     ],
-                    color: color.withValues(alpha: 0.15),
-                    borderColor: color.withValues(alpha: 0.8),
-                    borderStrokeWidth: 2,
                   ),
                 ],
               ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: event.position,
-                  width: 28,
-                  height: 28,
-                  child: EventMarker(event: event, onTap: () {}),
+              // "Open on map" affordance.
+              Positioned(
+                right: 8,
+                bottom: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.map, size: 14, color: Colors.white),
+                      SizedBox(width: 5),
+                      Text(
+                        'Pokaži na karti',
+                        style: TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A full-width live DARS camera image inside an event detail; tap to open.
+class _EventCameraCard extends StatelessWidget {
+  final TrafficCamera camera;
+
+  const _EventCameraCard({required this.camera});
+
+  @override
+  Widget build(BuildContext context) {
+    // Per-minute cache buster so the snapshot stays reasonably fresh.
+    final bust = DateTime.now().millisecondsSinceEpoch ~/ 60000;
+    final url = camera.imageUrlWithBuster(bust);
+    return GestureDetector(
+      onTap: () => showCameraSheet(context, camera),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(
+                color: Colors.black,
+                child: CachedNetworkImage(
+                  imageUrl: url,
+                  cacheKey: url,
+                  fit: BoxFit.cover,
+                  placeholder: (_, _) => const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  errorWidget: (_, _, _) => const Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.white54,
+                    size: 40,
+                  ),
+                ),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0.6, 1.0],
+                    colors: [Colors.transparent, Colors.black87],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 10,
+                child: Text(
+                  camera.title.isEmpty ? 'Kamera' : camera.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    shadows: [Shadow(blurRadius: 6, color: Colors.black87)],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

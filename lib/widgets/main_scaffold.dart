@@ -2,6 +2,7 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/travel_times_provider.dart';
 import '../providers/weather_provider.dart';
@@ -50,6 +51,14 @@ class _MainScaffoldState extends State<MainScaffold> {
         navNotifier.clearPendingStation();
       });
     }
+    final location = navNotifier.pendingLocationOnMap;
+    if (location != null) {
+      widget.navigationShell.goBranch(0); // Switch to map tab
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        mapTabKey.currentState?.focusLocation(location);
+        navNotifier.clearPendingLocation();
+      });
+    }
   }
 
   void _handleTabTap(int index) {
@@ -74,6 +83,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     // Pick up fresh data when switching tabs if it's stale.
     context.read<WeatherProvider>().refreshIfStale();
     context.read<EventsProvider>().refreshIfStale();
+    context.read<CamerasProvider>().refreshIfStale();
     context.read<TravelTimesProvider>().refreshIfStale();
   }
 
@@ -119,11 +129,11 @@ class _MainScaffoldState extends State<MainScaffold> {
             selectedIcon: Icons.map,
           ),
           _dest(
-            label: 'Postaje',
-            iosSymbol: 'list.bullet',
-            iosSelectedSymbol: 'list.bullet',
-            icon: Icons.list_alt_outlined,
-            selectedIcon: Icons.list_alt,
+            label: 'Kamere',
+            iosSymbol: 'video',
+            iosSelectedSymbol: 'video.fill',
+            icon: Icons.videocam_outlined,
+            selectedIcon: Icons.videocam,
           ),
           _dest(
             label: 'Dogodki',

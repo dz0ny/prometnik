@@ -5,8 +5,12 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../models/traffic_event.dart';
 import '../models/weather_station.dart';
+import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/weather_provider.dart';
+import '../services/prefs.dart';
+import '../services/roads_service.dart';
+import '../widgets/camera_sheet.dart';
 import '../widgets/event_marker.dart';
 import '../widgets/event_sheet.dart';
 import '../widgets/event_visuals.dart';
@@ -38,9 +42,113 @@ class MapTabState extends State<MapTab> {
     EventSeverity.roadworks,
     EventSeverity.other,
   ];
+  static const List<EventSource> _sources = [
+    EventSource.drsi,
+    EventSource.dars,
+    EventSource.other,
+  ];
   bool _showWeather = true;
   bool _showCameras = true;
+  bool _showDarsCameras = true;
   final Set<EventSeverity> _eventFilter = {..._severities};
+  final Set<EventSource> _sourceFilter = {..._sources};
+
+  // Affected-area road highlights for the visible events.
+  List<Polyline> _eventRoads = const [];
+  String _roadsSig = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _showWeather = Prefs.getBool('map.showWeather', true);
+    _showCameras = Prefs.getBool('map.showCameras', true);
+    _showDarsCameras = Prefs.getBool('map.darsCameras', true);
+    if (Prefs.has('map.severities')) {
+      final saved = Prefs.getStringList('map.severities', const []);
+      _eventFilter
+        ..clear()
+        ..addAll(saved.map(_severityByName).whereType<EventSeverity>());
+    }
+    if (Prefs.has('map.sources')) {
+      final saved = Prefs.getStringList('map.sources', const []);
+      _sourceFilter
+        ..clear()
+        ..addAll(saved.map(_sourceByName).whereType<EventSource>());
+    }
+  }
+
+  void _saveMapFilters() {
+    Prefs.setBool('map.showWeather', _showWeather);
+    Prefs.setBool('map.showCameras', _showCameras);
+    Prefs.setBool('map.darsCameras', _showDarsCameras);
+    Prefs.setStringList(
+      'map.severities',
+      _eventFilter.map((s) => s.name).toList(),
+    );
+    Prefs.setStringList(
+      'map.sources',
+      _sourceFilter.map((s) => s.name).toList(),
+    );
+  }
+
+  static EventSeverity? _severityByName(String n) {
+    for (final s in _severities) {
+      if (s.name == n) return s;
+    }
+    return null;
+  }
+
+  static EventSource? _sourceByName(String n) {
+    for (final s in _sources) {
+      if (s.name == n) return s;
+    }
+    return null;
+  }
+
+  /// Recompute the highlighted roads inside each visible event's affected area
+  /// when the visible event set changes.
+  Future<void> _refreshEventRoads(List<TrafficEvent> events) async {
+    final lines = <Polyline>[];
+    for (final e in events) {
+      if (!e.hasArea) continue;
+      final sw = e.areaSouthWest!, ne = e.areaNorthEast!;
+      final roads = await RoadsService.instance.roadsIn(
+        sw.longitude,
+        sw.latitude,
+        ne.longitude,
+        ne.latitude,
+      );
+      final color = EventVisuals.color(e.severity);
+      final eref = eventRoadRef(e.road);
+      final matched = roads.where((r) => roadRefMatches(eref, r.ref)).toList();
+      if (matched.isNotEmpty) {
+        // Highlight just the matched road to keep the map readable.
+        for (final r in matched) {
+          lines.add(
+            Polyline(
+              points: r.points,
+              color: color,
+              strokeWidth: 4,
+              borderColor: Colors.white.withValues(alpha: 0.5),
+              borderStrokeWidth: 1,
+            ),
+          );
+        }
+      } else {
+        // No ref match — faintly tint the roads in the affected area.
+        for (final r in roads) {
+          lines.add(
+            Polyline(
+              points: r.points,
+              color: color.withValues(alpha: 0.55),
+              strokeWidth: 2,
+            ),
+          );
+        }
+      }
+    }
+    if (mounted) setState(() => _eventRoads = lines);
+  }
 
   bool _stationVisible(WeatherStation s) =>
       s.hasWeather ? _showWeather : _showCameras;
@@ -48,14 +156,19 @@ class MapTabState extends State<MapTab> {
   int get _activeMapFilterCount =>
       (_showWeather ? 0 : 1) +
       (_showCameras ? 0 : 1) +
-      (_severities.length - _eventFilter.length);
+      (_showDarsCameras ? 0 : 1) +
+      (_severities.length - _eventFilter.length) +
+      (_sources.length - _sourceFilter.length);
 
   void _openMapFilters() {
     var pendingWeather = _showWeather;
     var pendingCameras = _showCameras;
+    var pendingDarsCameras = _showDarsCameras;
     final pendingEvents = {..._eventFilter};
+    final pendingSources = {..._sourceFilter};
     final events = context.read<EventsProvider>().events;
     int count(EventSeverity s) => events.where((e) => e.severity == s).length;
+    int srcCount(EventSource s) => events.where((e) => e.source == s).length;
 
     showFilterSheet(
       context: context,
@@ -63,17 +176,28 @@ class MapTabState extends State<MapTab> {
       onReset: () {
         pendingWeather = true;
         pendingCameras = true;
+        pendingDarsCameras = true;
         pendingEvents
           ..clear()
           ..addAll(_severities);
-      },
-      onApply: () => setState(() {
-        _showWeather = pendingWeather;
-        _showCameras = pendingCameras;
-        _eventFilter
+        pendingSources
           ..clear()
-          ..addAll(pendingEvents);
-      }),
+          ..addAll(_sources);
+      },
+      onApply: () {
+        setState(() {
+          _showWeather = pendingWeather;
+          _showCameras = pendingCameras;
+          _showDarsCameras = pendingDarsCameras;
+          _eventFilter
+            ..clear()
+            ..addAll(pendingEvents);
+          _sourceFilter
+            ..clear()
+            ..addAll(pendingSources);
+        });
+        _saveMapFilters();
+      },
       contentBuilder: (setSheet) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -91,6 +215,12 @@ class MapTabState extends State<MapTab> {
             pendingCameras,
             (v) => setSheet(() => pendingCameras = v),
           ),
+          _switchRow(
+            Icons.photo_camera,
+            'DARS kamere',
+            pendingDarsCameras,
+            (v) => setSheet(() => pendingDarsCameras = v),
+          ),
           const FilterSectionLabel('Dogodki'),
           for (final s in _severities)
             _switchRow(
@@ -105,6 +235,20 @@ class MapTabState extends State<MapTab> {
                 }
               }),
               iconColor: EventVisuals.color(s),
+            ),
+          const FilterSectionLabel('Vir'),
+          for (final s in _sources)
+            _switchRow(
+              EventVisuals.sourceIcon(s),
+              '${EventVisuals.sourceLabel(s)} (${srcCount(s)})',
+              pendingSources.contains(s),
+              (v) => setSheet(() {
+                if (v) {
+                  pendingSources.add(s);
+                } else {
+                  pendingSources.remove(s);
+                }
+              }),
             ),
         ],
       ),
@@ -142,6 +286,11 @@ class MapTabState extends State<MapTab> {
     _openStation(station);
   }
 
+  /// Centre the map on an arbitrary location (e.g. a tapped traffic event).
+  void focusLocation(LatLng location) {
+    if (_mapReady) _mapController.move(location, 13.0);
+  }
+
   void _openStation(WeatherStation station) {
     showModalBottomSheet(
       context: context,
@@ -160,6 +309,28 @@ class MapTabState extends State<MapTab> {
         builder: (context, provider, _) {
           final cs = Theme.of(context).colorScheme;
           final isDark = Theme.of(context).brightness == Brightness.dark;
+
+          // Events shown on the map (after the severity filter).
+          final visibleEvents = context
+              .watch<EventsProvider>()
+              .events
+              .where(
+                (e) =>
+                    _eventFilter.contains(e.severity) &&
+                    _sourceFilter.contains(e.source),
+              )
+              .toList();
+          // Recompute affected-road highlights only when the visible set changes.
+          final sig = visibleEvents
+              .map((e) => '${e.id}:${e.severity.index}')
+              .join('|');
+          if (sig != _roadsSig) {
+            _roadsSig = sig;
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _refreshEventRoads(visibleEvents),
+            );
+          }
+
           return Stack(
             children: [
               FlutterMap(
@@ -190,6 +361,25 @@ class MapTabState extends State<MapTab> {
                     userAgentPackageName: 'dev.dz0ny.promet',
                     maxZoom: 19,
                   ),
+                  // Affected-area roads for the visible events (under markers).
+                  if (_eventRoads.isNotEmpty)
+                    PolylineLayer(polylines: _eventRoads),
+                  // DARS cameras.
+                  if (_showDarsCameras)
+                    MarkerLayer(
+                      markers: [
+                        for (final cam
+                            in context.watch<CamerasProvider>().cameras)
+                          Marker(
+                            point: cam.position,
+                            width: 26,
+                            height: 26,
+                            child: _CameraMarker(
+                              onTap: () => showCameraSheet(context, cam),
+                            ),
+                          ),
+                      ],
+                    ),
                   MarkerLayer(
                     markers: [
                       for (final station in provider.stations)
@@ -209,18 +399,16 @@ class MapTabState extends State<MapTab> {
                   // Traffic events render on top of the weather markers.
                   MarkerLayer(
                     markers: [
-                      for (final event
-                          in context.watch<EventsProvider>().events)
-                        if (_eventFilter.contains(event.severity))
-                          Marker(
-                            point: event.position,
-                            width: 28,
-                            height: 28,
-                            child: EventMarker(
-                              event: event,
-                              onTap: () => showEventSheet(context, event),
-                            ),
+                      for (final event in visibleEvents)
+                        Marker(
+                          point: event.position,
+                          width: 28,
+                          height: 28,
+                          child: EventMarker(
+                            event: event,
+                            onTap: () => showEventSheet(context, event),
                           ),
+                        ),
                     ],
                   ),
                 ],
@@ -290,5 +478,30 @@ class MapTabState extends State<MapTab> {
       ),
     );
   }
+}
 
+/// A small circular pin for a DARS camera.
+class _CameraMarker extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _CameraMarker({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF455A64),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1)),
+          ],
+        ),
+        child: const Icon(Icons.photo_camera, size: 13, color: Colors.white),
+      ),
+    );
+  }
 }

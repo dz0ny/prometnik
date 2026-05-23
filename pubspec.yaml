@@ -62,3 +62,8 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
+
+  # Slovenian road geometry (OSM via HOTOSM, ODbL) — used to highlight roads
+  # within a traffic event's affected-area bbox.
+  assets:
+    - assets/roads.json

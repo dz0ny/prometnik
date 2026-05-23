@@ -3,6 +3,9 @@ import 'package:latlong2/latlong.dart';
 /// Severity classes for a traffic event, used to colour markers/tiles.
 enum EventSeverity { closed, jam, roadworks, other }
 
+/// Managing authority / data source of an event (from `NoticeText`).
+enum EventSource { drsi, dars, other }
+
 /// A traffic event / incident from the public promet.si data channel
 /// `agg.dogodki.v2` (a GeoJSON FeatureCollection of Point features).
 class TrafficEvent {
@@ -93,6 +96,15 @@ class TrafficEvent {
     if (isJam) return EventSeverity.jam;
     if (isRoadworks) return EventSeverity.roadworks;
     return EventSeverity.other;
+  }
+
+  /// Managing authority, derived from [noticeText]:
+  /// DARS (motorways/expressways), DRSI (state roads), or other (municipal).
+  EventSource get source {
+    final t = noticeText.toLowerCase();
+    if (t.contains('dars')) return EventSource.dars;
+    if (t.contains('direkcij')) return EventSource.drsi;
+    return EventSource.other;
   }
 
   /// Whether the event is active at [now] (defaults to current time). Events
