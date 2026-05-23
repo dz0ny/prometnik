@@ -51,18 +51,18 @@ class TravelTime {
     final delayMs = toInt(props['Delay']);
     final rawStatus = toStr(props['Status']).toLowerCase();
 
+    // Lenient colouring: small delays stay "normal" (green). Only sizeable
+    // delays escalate to amber/orange.
     TravelStatus status;
     if (closed) {
       status = TravelStatus.closed;
-    } else if (rawStatus.contains('zast') ||
+    } else if (delayMs >= 1500000 ||
+        rawStatus.contains('zast') ||
         rawStatus.contains('congest') ||
         rawStatus.contains('heavy')) {
-      status = TravelStatus.congested;
-    } else if (rawStatus.isNotEmpty && rawStatus != 'normal') {
-      status = TravelStatus.slow;
-    } else if (delayMs > 300000) {
-      // No explicit status but >5 min delay → treat as slow.
-      status = TravelStatus.slow;
+      status = TravelStatus.congested; // ~25 min+ or explicit congestion
+    } else if (delayMs >= 600000) {
+      status = TravelStatus.slow; // ~10 min+
     } else {
       status = TravelStatus.normal;
     }

@@ -37,7 +37,16 @@ class _ListTabState extends State<ListTab> {
   bool _onlyFavorites = false;
   bool _showDarsCameras = true;
   _KindFilter _kind = _KindFilter.all;
-  final int _refreshKey = DateTime.now().millisecondsSinceEpoch;
+  int _refreshKey = DateTime.now().millisecondsSinceEpoch;
+
+  /// Refresh data and bust the webcam/camera image cache so thumbnails reload.
+  Future<void> _onRefresh() async {
+    setState(() => _refreshKey = DateTime.now().millisecondsSinceEpoch);
+    await Future.wait([
+      context.read<WeatherProvider>().refresh(),
+      context.read<CamerasProvider>().refresh(),
+    ]);
+  }
 
   FavoritesProvider? _favs;
   bool _favInitDone = false;
@@ -240,7 +249,7 @@ class _ListTabState extends State<ListTab> {
                   final groups = _buildGroups(stations, cameras, favs);
 
                   return RefreshIndicator(
-                    onRefresh: provider.refresh,
+                    onRefresh: _onRefresh,
                     child: ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: EdgeInsets.only(

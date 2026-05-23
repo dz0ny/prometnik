@@ -39,6 +39,10 @@ class _NearbyTabState extends State<NearbyTab> {
   final Set<EventSeverity> _active = {..._order};
   final Set<EventSource> _sourceActive = {..._sourceOrder};
 
+  /// Causes the user has hidden (empty = all causes shown). Stored as the
+  /// excluded set so newly-appearing causes default to visible.
+  final Set<String> _excludedCauses = {};
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +64,7 @@ class _NearbyTabState extends State<NearbyTab> {
               .whereType<EventSource>(),
         );
     }
+    _excludedCauses.addAll(Prefs.getStringList('nearby.excludedCauses', const []));
   }
 
   static EventSeverity? _severityByName(String n) {
@@ -92,21 +97,32 @@ class _NearbyTabState extends State<NearbyTab> {
   bool _passes(TrafficEvent e) =>
       _matchesQuery(e) &&
       _active.contains(e.severity) &&
-      _sourceActive.contains(e.source);
+      _sourceActive.contains(e.source) &&
+      !_excludedCauses.contains(e.cause);
 
   int get _activeFilterCount {
     var n = 0;
     if (_active.length != _order.length) n += _active.length;
     if (_sourceActive.length != _sourceOrder.length) n += _sourceActive.length;
+    n += _excludedCauses.length;
     return n;
   }
 
   void _openFilters() {
     final pending = {..._active};
     final pendingSrc = {..._sourceActive};
+    final pendingExcluded = {..._excludedCauses};
     final events = context.read<EventsProvider>().events;
     int count(EventSeverity s) => events.where((e) => e.severity == s).length;
     int srcCount(EventSource s) => events.where((e) => e.source == s).length;
+    // Distinct causes present in the data, sorted, with counts.
+    final causeCounts = <String, int>{};
+    for (final e in events) {
+      if (e.cause.isNotEmpty) {
+        causeCounts[e.cause] = (causeCounts[e.cause] ?? 0) + 1;
+      }
+    }
+    final causes = causeCounts.keys.toList()..sort();
 
     showFilterSheet(
       context: context,
@@ -118,6 +134,7 @@ class _NearbyTabState extends State<NearbyTab> {
         pendingSrc
           ..clear()
           ..addAll(_sourceOrder);
+        pendingExcluded.clear();
       },
       onApply: () {
         setState(() {
@@ -127,6 +144,9 @@ class _NearbyTabState extends State<NearbyTab> {
           _sourceActive
             ..clear()
             ..addAll(pendingSrc);
+          _excludedCauses
+            ..clear()
+            ..addAll(pendingExcluded);
         });
         Prefs.setStringList(
           'nearby.severities',
@@ -135,6 +155,10 @@ class _NearbyTabState extends State<NearbyTab> {
         Prefs.setStringList(
           'nearby.sources',
           _sourceActive.map((s) => s.name).toList(),
+        );
+        Prefs.setStringList(
+          'nearby.excludedCauses',
+          _excludedCauses.toList(),
         );
       },
       contentBuilder: (setSheet) => Column(
@@ -196,10 +220,38 @@ class _NearbyTabState extends State<NearbyTab> {
                 ],
               ),
             ),
+          if (causes.isNotEmpty) const FilterSectionLabel('Vzrok'),
+          for (final c in causes)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_capitalize(c)} (${causeCounts[c]})',
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: !pendingExcluded.contains(c),
+                    onChanged: (v) => setSheet(() {
+                      if (v) {
+                        pendingExcluded.remove(c);
+                      } else {
+                        pendingExcluded.add(c);
+                      }
+                    }),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
+
+  static String _capitalize(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   Widget _searchField() {
     void onChanged(String v) => setState(() => _query = v.toLowerCase().trim());
