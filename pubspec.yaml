@@ -3,7 +3,7 @@ description: "Vreme in kamere na slovenskih cestah (DARS / ceste.si)."
 publish_to: 'none'
 
 # Version format: YYYY.MMDD.DAILY+BUILD (see Makefile)
-version: 2026.0523.3+4
+version: 2026.0523.4+5
 
 environment:
   sdk: ^3.9.2
