@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:latlong2/latlong.dart';
@@ -100,6 +101,88 @@ class RoadsService {
       out.add(RoadLine(_refs![i], _names![i], pts));
     }
     return out;
+  }
+
+  /// The `ref` of the nearest road (with a non-empty ref) to a point, within
+  /// [maxMeters]; null if none. Used by the map road picker.
+  Future<String?> nearestRoadRef(
+    double lat,
+    double lon, {
+    double maxMeters = 150,
+  }) async {
+    await _ensureLoaded();
+    final dLat = maxMeters / 111320.0;
+    final dLon = maxMeters / (111320.0 * cos(lat * pi / 180));
+    final w = lon - dLon, e = lon + dLon, s = lat - dLat, n = lat + dLat;
+    var best = double.infinity;
+    String? bestRef;
+    final coords = _coords!;
+    for (var i = 0; i < coords.length; i++) {
+      if (_refs![i].isEmpty) continue;
+      if (_east![i] < w || _west![i] > e || _north![i] < s || _south![i] > n) {
+        continue;
+      }
+      final f = coords[i];
+      for (var j = 0; j + 3 < f.length; j += 2) {
+        final d = _segDistMeters(
+          lat,
+          lon,
+          f[j + 1],
+          f[j],
+          f[j + 3],
+          f[j + 2],
+        );
+        if (d < best) {
+          best = d;
+          bestRef = _refs![i];
+        }
+      }
+    }
+    return best <= maxMeters ? bestRef : null;
+  }
+
+  /// All roads whose ref matches any of [refs] (e.g. to highlight watched roads).
+  Future<List<RoadLine>> roadsByRefs(Set<String> refs) async {
+    await _ensureLoaded();
+    if (refs.isEmpty) return const [];
+    final coords = _coords!;
+    final out = <RoadLine>[];
+    for (var i = 0; i < coords.length; i++) {
+      final r = _refs![i];
+      if (r.isEmpty) continue;
+      if (!refs.any((w) => roadRefMatches(w, r))) continue;
+      final f = coords[i];
+      final pts = <LatLng>[];
+      for (var j = 0; j + 1 < f.length; j += 2) {
+        pts.add(LatLng(f[j + 1], f[j]));
+      }
+      out.add(RoadLine(r, _names![i], pts));
+    }
+    return out;
+  }
+
+  /// Distance (metres) from point P to segment A→B via local equirectangular
+  /// projection around P.
+  static double _segDistMeters(
+    double plat,
+    double plon,
+    double alat,
+    double alon,
+    double blat,
+    double blon,
+  ) {
+    final mPerLat = 111320.0;
+    final mPerLon = 111320.0 * cos(plat * pi / 180);
+    final px = plon * mPerLon, py = plat * mPerLat;
+    final ax = alon * mPerLon, ay = alat * mPerLat;
+    final bx = blon * mPerLon, by = blat * mPerLat;
+    final dx = bx - ax, dy = by - ay;
+    final len2 = dx * dx + dy * dy;
+    var t = len2 == 0 ? 0.0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+    t = t.clamp(0.0, 1.0);
+    final cx = ax + t * dx, cy = ay + t * dy;
+    final ex = px - cx, ey = py - cy;
+    return sqrt(ex * ex + ey * ey);
   }
 }
 

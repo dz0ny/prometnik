@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../models/traffic_event.dart';
 import '../models/weather_station.dart';
+import '../providers/alerts_controller.dart';
 import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/weather_provider.dart';
@@ -269,7 +270,7 @@ class MapTabState extends State<MapTab> {
           Icon(icon, color: iconColor),
           const SizedBox(width: 12),
           Expanded(child: Text(label, style: const TextStyle(fontSize: 15))),
-          AdaptiveSwitch(value: value, onChanged: onChanged),
+          Switch.adaptive(value: value, onChanged: onChanged),
         ],
       ),
     );
@@ -289,6 +290,15 @@ class MapTabState extends State<MapTab> {
   /// Centre the map on an arbitrary location (e.g. a tapped traffic event).
   void focusLocation(LatLng location) {
     if (_mapReady) _mapController.move(location, 13.0);
+  }
+
+  Future<void> _goToMyLocation() async {
+    final alerts = context.read<AlertsController>();
+    if (!alerts.locationEnabled) await alerts.enableLocation();
+    final p = alerts.position;
+    if (p != null && _mapReady) {
+      _mapController.move(LatLng(p.latitude, p.longitude), 13);
+    }
   }
 
   void _openStation(WeatherStation station) {
@@ -320,6 +330,11 @@ class MapTabState extends State<MapTab> {
                     _sourceFilter.contains(e.source),
               )
               .toList();
+          final myPos = context.watch<AlertsController>().position;
+          final myLocation = myPos == null
+              ? null
+              : LatLng(myPos.latitude, myPos.longitude);
+
           // Recompute affected-road highlights only when the visible set changes.
           final sig = visibleEvents
               .map((e) => '${e.id}:${e.severity.index}')
@@ -411,6 +426,18 @@ class MapTabState extends State<MapTab> {
                         ),
                     ],
                   ),
+                  // The user's current location.
+                  if (myLocation != null)
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: myLocation,
+                          width: 22,
+                          height: 22,
+                          child: const _UserDot(),
+                        ),
+                      ],
+                    ),
                 ],
               ),
               if (provider.error != null && !provider.hasData)
@@ -423,6 +450,18 @@ class MapTabState extends State<MapTab> {
                     child: FilterButton(
                       activeCount: _activeMapFilterCount,
                       onTap: _openMapFilters,
+                    ),
+                  ),
+                ),
+              ),
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.bottomRight,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: _MapButton(
+                      icon: Icons.my_location,
+                      onTap: _goToMyLocation,
                     ),
                   ),
                 ),
@@ -501,6 +540,51 @@ class _CameraMarker extends StatelessWidget {
           ],
         ),
         child: const Icon(Icons.photo_camera, size: 13, color: Colors.white),
+      ),
+    );
+  }
+}
+
+/// The user's current-location dot.
+class _UserDot extends StatelessWidget {
+  const _UserDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A73E8),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: const [
+          BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 1)),
+        ],
+      ),
+    );
+  }
+}
+
+/// A circular map overlay button (e.g. "my location").
+class _MapButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _MapButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surface.withValues(alpha: 0.95),
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(11),
+          child: Icon(icon, color: cs.primary, size: 22),
+        ),
       ),
     );
   }

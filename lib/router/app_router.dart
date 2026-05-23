@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../screens/about_screen.dart';
-import '../screens/events_tab.dart';
 import '../screens/list_tab.dart';
+import '../screens/intro_wizard_screen.dart';
 import '../screens/map_tab.dart';
+import '../screens/nearby_tab.dart';
 import '../screens/travel_times_tab.dart';
 import '../screens/station_detail_screen.dart';
 import '../widgets/main_scaffold.dart';
@@ -13,19 +14,27 @@ import 'route_names.dart';
 final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellNavigatorMapKey = GlobalKey<NavigatorState>(debugLabel: 'map');
 final _shellNavigatorListKey = GlobalKey<NavigatorState>(debugLabel: 'list');
-final _shellNavigatorEventsKey = GlobalKey<NavigatorState>(debugLabel: 'events');
 final _shellNavigatorTimesKey = GlobalKey<NavigatorState>(debugLabel: 'times');
+final _shellNavigatorNearbyKey = GlobalKey<NavigatorState>(debugLabel: 'nearby');
 
 /// Global key to access MapTabState for operations like focusing a station.
 final mapTabKey = GlobalKey<MapTabState>();
 
-/// Create the GoRouter configuration.
-GoRouter createRouter() {
+/// Create the GoRouter configuration. When [showOnboarding] is true the app
+/// starts on the intro wizard.
+GoRouter createRouter({bool showOnboarding = false}) {
   return GoRouter(
     navigatorKey: rootNavigatorKey,
-    initialLocation: AppRoutes.map,
+    initialLocation: showOnboarding ? AppRoutes.onboarding : AppRoutes.map,
     debugLogDiagnostics: false,
     routes: [
+      // Onboarding wizard (full screen, outside shell)
+      GoRoute(
+        path: AppRoutes.onboarding,
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const IntroWizardScreen(),
+      ),
+
       // About screen (full screen, outside shell)
       GoRoute(
         path: AppRoutes.about,
@@ -70,24 +79,24 @@ GoRouter createRouter() {
             ],
           ),
 
-          // Events tab (index 2)
-          StatefulShellBranch(
-            navigatorKey: _shellNavigatorEventsKey,
-            routes: [
-              GoRoute(
-                path: AppRoutes.events,
-                builder: (context, state) => const EventsTab(),
-              ),
-            ],
-          ),
-
-          // Travel times tab (index 3)
+          // Travel times tab
           StatefulShellBranch(
             navigatorKey: _shellNavigatorTimesKey,
             routes: [
               GoRoute(
                 path: AppRoutes.times,
                 builder: (context, state) => const TravelTimesTab(),
+              ),
+            ],
+          ),
+
+          // Nearby tab (index 4)
+          StatefulShellBranch(
+            navigatorKey: _shellNavigatorNearbyKey,
+            routes: [
+              GoRoute(
+                path: AppRoutes.nearby,
+                builder: (context, state) => const NearbyTab(),
               ),
             ],
           ),

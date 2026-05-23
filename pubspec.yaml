@@ -37,6 +37,8 @@ dependencies:
   # Platform-adaptive UI (Material on Android, Cupertino/iOS 26 on iOS)
   adaptive_platform_ui: ^0.1.107
   cupertino_icons: ^1.0.9
+  geolocator: ^14.0.1
+  flutter_local_notifications: ^21.0.0
 
 dev_dependencies:
   flutter_test:

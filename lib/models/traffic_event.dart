@@ -24,6 +24,11 @@ class TrafficEvent {
   /// Short cause, e.g. "dela", "popolna zapora", "zastoj".
   final String cause;
 
+  /// Road designation without the Euroroute suffix, e.g. "A1-E57" → "A1",
+  /// "R3-651" → "R3-651". Used for watched-road matching.
+  String get roadDesignation =>
+      road.replaceFirst(RegExp(r'-E\d+.*$'), '').trim();
+
   /// Raw icon name from the feed (e.g. "zaprta.png", "nesreca.png"), used to
   /// pick a cause-specific icon.
   final String iconName;

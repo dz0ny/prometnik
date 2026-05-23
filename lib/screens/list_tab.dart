@@ -297,12 +297,36 @@ class _ListTabState extends State<ListTab> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const FilterSectionLabel('Vrsta'),
-          AdaptiveSegmentedControl(
-            labels: const ['Vse', 'Vreme', 'Kamera'],
-            selectedIndex: pendingKind.index,
-            onValueChanged: (i) =>
-                setSheet(() => pendingKind = _KindFilter.values[i]),
-          ),
+          // Flutter-drawn segmented control (the native one is a platform view
+          // that occludes following content in a sheet).
+          PlatformInfo.isIOS
+              ? CupertinoSlidingSegmentedControl<int>(
+                  groupValue: pendingKind.index,
+                  children: const {
+                    0: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Text('Vse'),
+                    ),
+                    1: Text('Vreme'),
+                    2: Text('Kamera'),
+                  },
+                  onValueChanged: (i) {
+                    if (i != null) {
+                      setSheet(() => pendingKind = _KindFilter.values[i]);
+                    }
+                  },
+                )
+              : SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('Vse')),
+                    ButtonSegment(value: 1, label: Text('Vreme')),
+                    ButtonSegment(value: 2, label: Text('Kamera')),
+                  ],
+                  selected: {pendingKind.index},
+                  onSelectionChanged: (s) =>
+                      setSheet(() => pendingKind = _KindFilter.values[s.first]),
+                ),
           const SizedBox(height: 8),
           const FilterSectionLabel('Prikaz'),
           Row(
@@ -315,7 +339,7 @@ class _ListTabState extends State<ListTab> {
                   style: const TextStyle(fontSize: 15),
                 ),
               ),
-              AdaptiveSwitch(
+              Switch.adaptive(
                 value: pendingFav,
                 onChanged: (v) => setSheet(() => pendingFav = v),
               ),
@@ -326,7 +350,7 @@ class _ListTabState extends State<ListTab> {
               const Expanded(
                 child: Text('DARS kamere', style: TextStyle(fontSize: 15)),
               ),
-              AdaptiveSwitch(
+              Switch.adaptive(
                 value: pendingDars,
                 onChanged: (v) => setSheet(() => pendingDars = v),
               ),

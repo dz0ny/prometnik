@@ -2,6 +2,7 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'providers/alerts_controller.dart';
 import 'providers/cameras_provider.dart';
 import 'providers/events_provider.dart';
 import 'providers/favorites_provider.dart';
@@ -9,6 +10,7 @@ import 'providers/travel_times_provider.dart';
 import 'providers/weather_provider.dart';
 import 'router/app_router.dart';
 import 'router/navigation_notifier.dart';
+import 'screens/intro_wizard_screen.dart';
 import 'services/prefs.dart';
 import 'theme/app_theme.dart';
 
@@ -50,6 +52,12 @@ class _PrometAppState extends State<PrometApp> {
         ChangeNotifierProvider(create: (_) => TravelTimesProvider()..start()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()..load()),
         ChangeNotifierProvider(create: (_) => NavigationNotifier()),
+        // Location/watched-road alerts; fed the latest events via the proxy.
+        ChangeNotifierProxyProvider<EventsProvider, AlertsController>(
+          create: (_) => AlertsController()..bootstrap(),
+          update: (_, events, alerts) =>
+              (alerts ?? AlertsController())..updateEvents(events.events),
+        ),
       ],
       child: AdaptiveApp.router(
         title: 'Prometnik',
@@ -88,6 +96,6 @@ class _PrometAppState extends State<PrometApp> {
 
 /// Holds the GoRouter so it survives rebuilds and is disposed cleanly.
 class GoRouterHolder {
-  final router = createRouter();
+  final router = createRouter(showOnboarding: IntroWizardScreen.shouldShow());
   void dispose() => router.dispose();
 }
