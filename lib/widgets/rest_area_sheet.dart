@@ -14,12 +14,15 @@ const _amenityIcons = <String, (IconData, String)>{
   'rest': (Icons.weekend, 'Počitek'),
 };
 
-Color restAreaColor(String c) => switch (c) {
-  'red' => const Color(0xFFE53935),
-  'orange' => const Color(0xFFFB8C00),
-  'green' => const Color(0xFF66BB6A),
-  _ => const Color(0xFF6B7B8C),
-};
+/// Marker/accent colour derived from how full the lot is, not the opaque
+/// `ColorAvailability` string from the feed. Grey when there is no live data.
+Color restAreaColor(RestArea area) {
+  if (!area.hasLiveAvailability) return const Color(0xFF6B7B8C); // no data
+  final free = area.available / area.total;
+  if (free <= 0.05) return const Color(0xFFE53935); // basically full
+  if (free < 0.20) return const Color(0xFFFB8C00); // filling up
+  return const Color(0xFF66BB6A); // plenty of room
+}
 
 void showRestAreaSheet(BuildContext context, RestArea area) {
   showModalBottomSheet(
@@ -39,7 +42,7 @@ class _RestAreaSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final color = restAreaColor(area.availabilityColor);
+    final color = restAreaColor(area);
 
     return Container(
       decoration: BoxDecoration(

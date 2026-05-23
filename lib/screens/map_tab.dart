@@ -386,7 +386,7 @@ class MapTabState extends State<MapTab> {
                             width: area.hasLiveAvailability ? 78 : 26,
                             height: 26,
                             child: _RestAreaMarker(
-                              color: restAreaColor(area.availabilityColor),
+                              color: restAreaColor(area),
                               available: area.available,
                               total: area.total,
                               onTap: () => showRestAreaSheet(context, area),
