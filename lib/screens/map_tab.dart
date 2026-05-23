@@ -6,16 +6,20 @@ import 'package:provider/provider.dart';
 import '../models/traffic_event.dart';
 import '../models/weather_station.dart';
 import '../providers/alerts_controller.dart';
+import '../providers/burja_provider.dart';
 import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
+import '../providers/rest_areas_provider.dart';
 import '../providers/weather_provider.dart';
 import '../services/prefs.dart';
 import '../services/roads_service.dart';
+import '../widgets/burja_sheet.dart';
 import '../widgets/camera_sheet.dart';
 import '../widgets/event_marker.dart';
 import '../widgets/event_sheet.dart';
 import '../widgets/event_visuals.dart';
 import '../widgets/filter_sheet.dart';
+import '../widgets/rest_area_sheet.dart';
 import '../widgets/station_sheet.dart';
 import '../widgets/temperature_marker.dart';
 
@@ -43,16 +47,12 @@ class MapTabState extends State<MapTab> {
     EventSeverity.roadworks,
     EventSeverity.other,
   ];
-  static const List<EventSource> _sources = [
-    EventSource.drsi,
-    EventSource.dars,
-    EventSource.other,
-  ];
   bool _showWeather = true;
   bool _showCameras = true;
   bool _showDarsCameras = true;
+  bool _showRestAreas = true;
+  bool _showBurja = true;
   final Set<EventSeverity> _eventFilter = {..._severities};
-  final Set<EventSource> _sourceFilter = {..._sources};
 
   // Affected-area road highlights for the visible events.
   List<Polyline> _eventRoads = const [];
@@ -64,17 +64,13 @@ class MapTabState extends State<MapTab> {
     _showWeather = Prefs.getBool('map.showWeather', true);
     _showCameras = Prefs.getBool('map.showCameras', true);
     _showDarsCameras = Prefs.getBool('map.darsCameras', true);
+    _showRestAreas = Prefs.getBool('map.pocivalisca', true);
+    _showBurja = Prefs.getBool('map.burja', true);
     if (Prefs.has('map.severities')) {
       final saved = Prefs.getStringList('map.severities', const []);
       _eventFilter
         ..clear()
         ..addAll(saved.map(_severityByName).whereType<EventSeverity>());
-    }
-    if (Prefs.has('map.sources')) {
-      final saved = Prefs.getStringList('map.sources', const []);
-      _sourceFilter
-        ..clear()
-        ..addAll(saved.map(_sourceByName).whereType<EventSource>());
     }
   }
 
@@ -82,25 +78,16 @@ class MapTabState extends State<MapTab> {
     Prefs.setBool('map.showWeather', _showWeather);
     Prefs.setBool('map.showCameras', _showCameras);
     Prefs.setBool('map.darsCameras', _showDarsCameras);
+    Prefs.setBool('map.pocivalisca', _showRestAreas);
+    Prefs.setBool('map.burja', _showBurja);
     Prefs.setStringList(
       'map.severities',
       _eventFilter.map((s) => s.name).toList(),
-    );
-    Prefs.setStringList(
-      'map.sources',
-      _sourceFilter.map((s) => s.name).toList(),
     );
   }
 
   static EventSeverity? _severityByName(String n) {
     for (final s in _severities) {
-      if (s.name == n) return s;
-    }
-    return null;
-  }
-
-  static EventSource? _sourceByName(String n) {
-    for (final s in _sources) {
       if (s.name == n) return s;
     }
     return null;
@@ -158,18 +145,19 @@ class MapTabState extends State<MapTab> {
       (_showWeather ? 0 : 1) +
       (_showCameras ? 0 : 1) +
       (_showDarsCameras ? 0 : 1) +
-      (_severities.length - _eventFilter.length) +
-      (_sources.length - _sourceFilter.length);
+      (_showRestAreas ? 0 : 1) +
+      (_showBurja ? 0 : 1) +
+      (_severities.length - _eventFilter.length);
 
   void _openMapFilters() {
     var pendingWeather = _showWeather;
     var pendingCameras = _showCameras;
     var pendingDarsCameras = _showDarsCameras;
+    var pendingRestAreas = _showRestAreas;
+    var pendingBurja = _showBurja;
     final pendingEvents = {..._eventFilter};
-    final pendingSources = {..._sourceFilter};
     final events = context.read<EventsProvider>().events;
     int count(EventSeverity s) => events.where((e) => e.severity == s).length;
-    int srcCount(EventSource s) => events.where((e) => e.source == s).length;
 
     showFilterSheet(
       context: context,
@@ -178,24 +166,22 @@ class MapTabState extends State<MapTab> {
         pendingWeather = true;
         pendingCameras = true;
         pendingDarsCameras = true;
+        pendingRestAreas = true;
+        pendingBurja = true;
         pendingEvents
           ..clear()
           ..addAll(_severities);
-        pendingSources
-          ..clear()
-          ..addAll(_sources);
       },
       onApply: () {
         setState(() {
           _showWeather = pendingWeather;
           _showCameras = pendingCameras;
           _showDarsCameras = pendingDarsCameras;
+          _showRestAreas = pendingRestAreas;
+          _showBurja = pendingBurja;
           _eventFilter
             ..clear()
             ..addAll(pendingEvents);
-          _sourceFilter
-            ..clear()
-            ..addAll(pendingSources);
         });
         _saveMapFilters();
       },
@@ -222,6 +208,18 @@ class MapTabState extends State<MapTab> {
             pendingDarsCameras,
             (v) => setSheet(() => pendingDarsCameras = v),
           ),
+          _switchRow(
+            Icons.local_parking,
+            'Počivališča',
+            pendingRestAreas,
+            (v) => setSheet(() => pendingRestAreas = v),
+          ),
+          _switchRow(
+            Icons.air,
+            'Burja',
+            pendingBurja,
+            (v) => setSheet(() => pendingBurja = v),
+          ),
           const FilterSectionLabel('Dogodki'),
           for (final s in _severities)
             _switchRow(
@@ -236,20 +234,6 @@ class MapTabState extends State<MapTab> {
                 }
               }),
               iconColor: EventVisuals.color(s),
-            ),
-          const FilterSectionLabel('Vir'),
-          for (final s in _sources)
-            _switchRow(
-              EventVisuals.sourceIcon(s),
-              '${EventVisuals.sourceLabel(s)} (${srcCount(s)})',
-              pendingSources.contains(s),
-              (v) => setSheet(() {
-                if (v) {
-                  pendingSources.add(s);
-                } else {
-                  pendingSources.remove(s);
-                }
-              }),
             ),
         ],
       ),
@@ -324,11 +308,7 @@ class MapTabState extends State<MapTab> {
           final visibleEvents = context
               .watch<EventsProvider>()
               .events
-              .where(
-                (e) =>
-                    _eventFilter.contains(e.severity) &&
-                    _sourceFilter.contains(e.source),
-              )
+              .where((e) => _eventFilter.contains(e.severity))
               .toList();
           final myPos = context.watch<AlertsController>().position;
           final myLocation = myPos == null
@@ -391,6 +371,40 @@ class MapTabState extends State<MapTab> {
                             height: 26,
                             child: _CameraMarker(
                               onTap: () => showCameraSheet(context, cam),
+                            ),
+                          ),
+                      ],
+                    ),
+                  // Rest areas with live parking availability.
+                  if (_showRestAreas)
+                    MarkerLayer(
+                      markers: [
+                        for (final area
+                            in context.watch<RestAreasProvider>().items)
+                          Marker(
+                            point: area.position,
+                            width: 26,
+                            height: 26,
+                            child: _RestAreaMarker(
+                              color: restAreaColor(area.availabilityColor),
+                              onTap: () => showRestAreaSheet(context, area),
+                            ),
+                          ),
+                      ],
+                    ),
+                  // Burja (crosswind) measurement points.
+                  if (_showBurja)
+                    MarkerLayer(
+                      markers: [
+                        for (final st
+                            in context.watch<BurjaProvider>().items)
+                          Marker(
+                            point: st.position,
+                            width: 28,
+                            height: 28,
+                            child: _BurjaMarker(
+                              color: burjaColor(st.level),
+                              onTap: () => showBurjaSheet(context, st),
                             ),
                           ),
                       ],
@@ -540,6 +554,60 @@ class _CameraMarker extends StatelessWidget {
           ],
         ),
         child: const Icon(Icons.photo_camera, size: 13, color: Colors.white),
+      ),
+    );
+  }
+}
+
+/// A square pin for a rest area, tinted by parking availability.
+class _RestAreaMarker extends StatelessWidget {
+  final Color color;
+  final VoidCallback onTap;
+
+  const _RestAreaMarker({required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1)),
+          ],
+        ),
+        child: const Icon(Icons.local_parking, size: 15, color: Colors.white),
+      ),
+    );
+  }
+}
+
+/// A circular pin for a burja measurement point, tinted by severity.
+class _BurjaMarker extends StatelessWidget {
+  final Color color;
+  final VoidCallback onTap;
+
+  const _BurjaMarker({required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1)),
+          ],
+        ),
+        child: const Icon(Icons.air, size: 15, color: Colors.white),
       ),
     );
   }

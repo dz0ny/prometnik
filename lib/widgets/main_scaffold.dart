@@ -2,8 +2,10 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../providers/burja_provider.dart';
 import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
+import '../providers/rest_areas_provider.dart';
 import '../providers/travel_times_provider.dart';
 import '../providers/weather_provider.dart';
 import '../router/app_router.dart';
@@ -84,6 +86,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     context.read<WeatherProvider>().refreshIfStale();
     context.read<EventsProvider>().refreshIfStale();
     context.read<CamerasProvider>().refreshIfStale();
+    context.read<RestAreasProvider>().refreshIfStale();
+    context.read<BurjaProvider>().refreshIfStale();
     context.read<TravelTimesProvider>().refreshIfStale();
   }
 

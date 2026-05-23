@@ -29,15 +29,9 @@ class _NearbyTabState extends State<NearbyTab> {
     EventSeverity.roadworks,
     EventSeverity.other,
   ];
-  static const List<EventSource> _sourceOrder = [
-    EventSource.drsi,
-    EventSource.dars,
-    EventSource.other,
-  ];
 
   String _query = '';
   final Set<EventSeverity> _active = {..._order};
-  final Set<EventSource> _sourceActive = {..._sourceOrder};
 
   /// Causes the user has hidden (empty = all causes shown). Stored as the
   /// excluded set so newly-appearing causes default to visible.
@@ -55,27 +49,11 @@ class _NearbyTabState extends State<NearbyTab> {
               .whereType<EventSeverity>(),
         );
     }
-    if (Prefs.has('nearby.sources')) {
-      _sourceActive
-        ..clear()
-        ..addAll(
-          Prefs.getStringList('nearby.sources', const [])
-              .map(_sourceByName)
-              .whereType<EventSource>(),
-        );
-    }
     _excludedCauses.addAll(Prefs.getStringList('nearby.excludedCauses', const []));
   }
 
   static EventSeverity? _severityByName(String n) {
     for (final s in EventSeverity.values) {
-      if (s.name == n) return s;
-    }
-    return null;
-  }
-
-  static EventSource? _sourceByName(String n) {
-    for (final s in EventSource.values) {
       if (s.name == n) return s;
     }
     return null;
@@ -97,24 +75,20 @@ class _NearbyTabState extends State<NearbyTab> {
   bool _passes(TrafficEvent e) =>
       _matchesQuery(e) &&
       _active.contains(e.severity) &&
-      _sourceActive.contains(e.source) &&
       !_excludedCauses.contains(e.cause);
 
   int get _activeFilterCount {
     var n = 0;
     if (_active.length != _order.length) n += _active.length;
-    if (_sourceActive.length != _sourceOrder.length) n += _sourceActive.length;
     n += _excludedCauses.length;
     return n;
   }
 
   void _openFilters() {
     final pending = {..._active};
-    final pendingSrc = {..._sourceActive};
     final pendingExcluded = {..._excludedCauses};
     final events = context.read<EventsProvider>().events;
     int count(EventSeverity s) => events.where((e) => e.severity == s).length;
-    int srcCount(EventSource s) => events.where((e) => e.source == s).length;
     // Distinct causes present in the data, sorted, with counts.
     final causeCounts = <String, int>{};
     for (final e in events) {
@@ -131,9 +105,6 @@ class _NearbyTabState extends State<NearbyTab> {
         pending
           ..clear()
           ..addAll(_order);
-        pendingSrc
-          ..clear()
-          ..addAll(_sourceOrder);
         pendingExcluded.clear();
       },
       onApply: () {
@@ -141,9 +112,6 @@ class _NearbyTabState extends State<NearbyTab> {
           _active
             ..clear()
             ..addAll(pending);
-          _sourceActive
-            ..clear()
-            ..addAll(pendingSrc);
           _excludedCauses
             ..clear()
             ..addAll(pendingExcluded);
@@ -151,10 +119,6 @@ class _NearbyTabState extends State<NearbyTab> {
         Prefs.setStringList(
           'nearby.severities',
           _active.map((s) => s.name).toList(),
-        );
-        Prefs.setStringList(
-          'nearby.sources',
-          _sourceActive.map((s) => s.name).toList(),
         );
         Prefs.setStringList(
           'nearby.excludedCauses',
@@ -187,33 +151,6 @@ class _NearbyTabState extends State<NearbyTab> {
                         pending.add(s);
                       } else {
                         pending.remove(s);
-                      }
-                    }),
-                  ),
-                ],
-              ),
-            ),
-          const FilterSectionLabel('Vir'),
-          for (final s in _sourceOrder)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(EventVisuals.sourceIcon(s)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '${EventVisuals.sourceLabel(s)} (${srcCount(s)})',
-                      style: const TextStyle(fontSize: 15),
-                    ),
-                  ),
-                  Switch.adaptive(
-                    value: pendingSrc.contains(s),
-                    onChanged: (v) => setSheet(() {
-                      if (v) {
-                        pendingSrc.add(s);
-                      } else {
-                        pendingSrc.remove(s);
                       }
                     }),
                   ),

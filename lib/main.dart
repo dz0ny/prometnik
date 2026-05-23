@@ -3,9 +3,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/alerts_controller.dart';
+import 'providers/burja_provider.dart';
 import 'providers/cameras_provider.dart';
 import 'providers/events_provider.dart';
 import 'providers/favorites_provider.dart';
+import 'providers/rest_areas_provider.dart';
 import 'providers/travel_times_provider.dart';
 import 'providers/weather_provider.dart';
 import 'router/app_router.dart';
@@ -49,6 +51,8 @@ class _PrometAppState extends State<PrometApp> {
         ChangeNotifierProvider(create: (_) => WeatherProvider()..start()),
         ChangeNotifierProvider(create: (_) => EventsProvider()..start()),
         ChangeNotifierProvider(create: (_) => CamerasProvider()..start()),
+        ChangeNotifierProvider(create: (_) => RestAreasProvider()..start()),
+        ChangeNotifierProvider(create: (_) => BurjaProvider()..start()),
         ChangeNotifierProvider(create: (_) => TravelTimesProvider()..start()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()..load()),
         ChangeNotifierProvider(create: (_) => NavigationNotifier()),
