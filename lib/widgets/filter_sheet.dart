@@ -1,4 +1,3 @@
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 
 /// A compact "Filtri" button with an active-count badge. Opens a filter sheet.
@@ -68,14 +67,11 @@ class FilterButton extends StatelessWidget {
 }
 
 /// Presents a filter sheet. [contentBuilder] receives a [StateSetter] so the
-/// sheet's controls can update its own pending state. [onReset] clears the
-/// pending state to defaults; [onApply] commits it and closes the sheet.
+/// sheet's controls can update immediately while the sheet stays open.
 Future<void> showFilterSheet({
   required BuildContext context,
   required String title,
   required Widget Function(StateSetter setSheetState) contentBuilder,
-  required VoidCallback onReset,
-  required VoidCallback onApply,
 }) {
   return showModalBottomSheet(
     context: context,
@@ -87,11 +83,6 @@ Future<void> showFilterSheet({
       return StatefulBuilder(
         builder: (sheetContext, setSheetState) => _FilterSheetBody(
           title: title,
-          onReset: () => setSheetState(onReset),
-          onApply: () {
-            onApply();
-            Navigator.of(sheetContext).pop();
-          },
           child: contentBuilder(setSheetState),
         ),
       );
@@ -102,14 +93,10 @@ Future<void> showFilterSheet({
 class _FilterSheetBody extends StatelessWidget {
   final String title;
   final Widget child;
-  final VoidCallback onReset;
-  final VoidCallback onApply;
 
   const _FilterSheetBody({
     required this.title,
     required this.child,
-    required this.onReset,
-    required this.onApply,
   });
 
   @override
@@ -150,30 +137,8 @@ class _FilterSheetBody extends StatelessWidget {
             const SizedBox(height: 8),
             Flexible(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
                 child: child,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: AdaptiveButton(
-                      onPressed: onReset,
-                      label: 'Ponastavi',
-                      style: AdaptiveButtonStyle.tinted,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: AdaptiveButton(
-                      onPressed: onApply,
-                      label: 'Uporabi',
-                      style: AdaptiveButtonStyle.filled,
-                    ),
-                  ),
-                ],
               ),
             ),
           ],

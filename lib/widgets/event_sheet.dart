@@ -113,7 +113,7 @@ class EventSheet extends StatelessWidget {
               ),
               _Hero(event: event),
               const SizedBox(height: 14),
-              _MiniMap(event: event),
+              EventMiniMap(event: event),
               ..._camerasSection(context, cs),
               if (event.description.isNotEmpty) ...[
                 const SizedBox(height: 14),
@@ -272,16 +272,27 @@ class _Hero extends StatelessWidget {
 /// has an affected-area bbox, the roads inside it are highlighted in the
 /// severity colour (the closest we can get to the affected route from open
 /// data — see RoadsService).
-class _MiniMap extends StatefulWidget {
+class EventMiniMap extends StatefulWidget {
   final TrafficEvent event;
+  final double height;
+  final double borderRadius;
+  final bool showMapButton;
+  final VoidCallback? onTap;
 
-  const _MiniMap({required this.event});
+  const EventMiniMap({
+    super.key,
+    required this.event,
+    this.height = 170,
+    this.borderRadius = 16,
+    this.showMapButton = true,
+    this.onTap,
+  });
 
   @override
-  State<_MiniMap> createState() => _MiniMapState();
+  State<EventMiniMap> createState() => _MiniMapState();
 }
 
-class _MiniMapState extends State<_MiniMap> {
+class _MiniMapState extends State<EventMiniMap> {
   List<RoadLine> _roads = const [];
 
   @override
@@ -299,6 +310,10 @@ class _MiniMapState extends State<_MiniMap> {
   }
 
   void _jumpToMap() {
+    if (widget.onTap != null) {
+      widget.onTap!();
+      return;
+    }
     context.read<NavigationNotifier>().showLocationOnMap(widget.event.position);
     Navigator.of(context).pop();
   }
@@ -344,9 +359,9 @@ class _MiniMapState extends State<_MiniMap> {
     return GestureDetector(
       onTap: _jumpToMap,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(widget.borderRadius),
         child: SizedBox(
-          height: 170,
+          height: widget.height,
           child: Stack(
             children: [
               FlutterMap(
@@ -391,31 +406,32 @@ class _MiniMapState extends State<_MiniMap> {
                 ],
               ),
               // "Open on map" affordance.
-              Positioned(
-                right: 8,
-                bottom: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.map, size: 14, color: Colors.white),
-                      SizedBox(width: 5),
-                      Text(
-                        'Pokaži na karti',
-                        style: TextStyle(color: Colors.white, fontSize: 11),
-                      ),
-                    ],
+              if (widget.showMapButton)
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.map, size: 14, color: Colors.white),
+                        SizedBox(width: 5),
+                        Text(
+                          'Pokaži na karti',
+                          style: TextStyle(color: Colors.white, fontSize: 11),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),

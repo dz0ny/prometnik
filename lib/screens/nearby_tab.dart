@@ -29,9 +29,21 @@ class _NearbyTabState extends State<NearbyTab> {
     EventSeverity.roadworks,
     EventSeverity.other,
   ];
+  static const List<int?> _distanceLimitsKm = [
+    1,
+    5,
+    10,
+    25,
+    50,
+    100,
+    200,
+    300,
+    null,
+  ];
 
   String _query = '';
   final Set<EventSeverity> _active = {..._order};
+  int _distanceLimitIndex = _distanceLimitsKm.length - 1;
 
   /// Causes the user has hidden (empty = all causes shown). Stored as the
   /// excluded set so newly-appearing causes default to visible.
@@ -50,6 +62,10 @@ class _NearbyTabState extends State<NearbyTab> {
         );
     }
     _excludedCauses.addAll(Prefs.getStringList('nearby.excludedCauses', const []));
+    _distanceLimitIndex = Prefs.getInt(
+      'nearby.distanceLimitIndex',
+      _distanceLimitsKm.length - 1,
+    ).clamp(0, _distanceLimitsKm.length - 1);
   }
 
   static EventSeverity? _severityByName(String n) {
@@ -61,6 +77,16 @@ class _NearbyTabState extends State<NearbyTab> {
 
   static String _distance(double m) =>
       m >= 1000 ? '${(m / 1000).toStringAsFixed(1)} km' : '${m.round()} m';
+
+  static String _distanceLimitLabel(int index) {
+    final km = _distanceLimitsKm[index];
+    return km == null ? 'Neomejeno' : '$km km';
+  }
+
+  double? get _distanceLimitMeters {
+    final km = _distanceLimitsKm[_distanceLimitIndex];
+    return km == null ? null : km * 1000.0;
+  }
 
   /// Free-text match across all of an event's text fields (same as Dogodki).
   bool _matchesQuery(TrafficEvent e) {
@@ -81,12 +107,11 @@ class _NearbyTabState extends State<NearbyTab> {
     var n = 0;
     if (_active.length != _order.length) n += _active.length;
     n += _excludedCauses.length;
+    if (_distanceLimitMeters != null) n += 1;
     return n;
   }
 
   void _openFilters() {
-    final pending = {..._active};
-    final pendingExcluded = {..._excludedCauses};
     final events = context.read<EventsProvider>().events;
     int count(EventSeverity s) => events.where((e) => e.severity == s).length;
     // Distinct causes present in the data, sorted, with counts.
@@ -101,34 +126,40 @@ class _NearbyTabState extends State<NearbyTab> {
     showFilterSheet(
       context: context,
       title: 'Filtri',
-      onReset: () {
-        pending
-          ..clear()
-          ..addAll(_order);
-        pendingExcluded.clear();
-      },
-      onApply: () {
-        setState(() {
-          _active
-            ..clear()
-            ..addAll(pending);
-          _excludedCauses
-            ..clear()
-            ..addAll(pendingExcluded);
-        });
-        Prefs.setStringList(
-          'nearby.severities',
-          _active.map((s) => s.name).toList(),
-        );
-        Prefs.setStringList(
-          'nearby.excludedCauses',
-          _excludedCauses.toList(),
-        );
-      },
       contentBuilder: (setSheet) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const FilterSectionLabel('Razdalja'),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _distanceLimitLabel(_distanceLimitIndex),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Slider(
+                  min: 0,
+                  max: (_distanceLimitsKm.length - 1).toDouble(),
+                  divisions: _distanceLimitsKm.length - 1,
+                  label: _distanceLimitLabel(_distanceLimitIndex),
+                  value: _distanceLimitIndex.toDouble(),
+                  onChanged: (v) => setSheet(() {
+                    setState(() => _distanceLimitIndex = v.round());
+                    Prefs.setInt(
+                      'nearby.distanceLimitIndex',
+                      _distanceLimitIndex,
+                    );
+                  }),
+                ),
+              ],
+            ),
+          ),
           const FilterSectionLabel('Tipi dogodkov'),
           for (final s in _order)
             Padding(
@@ -144,14 +175,20 @@ class _NearbyTabState extends State<NearbyTab> {
                     ),
                   ),
                   Switch.adaptive(
-                    value: pending.contains(s),
+                    value: _active.contains(s),
                     activeTrackColor: EventVisuals.color(s),
                     onChanged: (v) => setSheet(() {
-                      if (v) {
-                        pending.add(s);
-                      } else {
-                        pending.remove(s);
-                      }
+                      setState(() {
+                        if (v) {
+                          _active.add(s);
+                        } else {
+                          _active.remove(s);
+                        }
+                      });
+                      Prefs.setStringList(
+                        'nearby.severities',
+                        _active.map((s) => s.name).toList(),
+                      );
                     }),
                   ),
                 ],
@@ -170,13 +207,19 @@ class _NearbyTabState extends State<NearbyTab> {
                     ),
                   ),
                   Switch.adaptive(
-                    value: !pendingExcluded.contains(c),
+                    value: !_excludedCauses.contains(c),
                     onChanged: (v) => setSheet(() {
-                      if (v) {
-                        pendingExcluded.remove(c);
-                      } else {
-                        pendingExcluded.add(c);
-                      }
+                      setState(() {
+                        if (v) {
+                          _excludedCauses.remove(c);
+                        } else {
+                          _excludedCauses.add(c);
+                        }
+                      });
+                      Prefs.setStringList(
+                        'nearby.excludedCauses',
+                        _excludedCauses.toList(),
+                      );
                     }),
                   ),
                 ],
@@ -234,10 +277,39 @@ class _NearbyTabState extends State<NearbyTab> {
               child: Consumer<AlertsController>(
                 builder: (context, alerts, _) {
                   final cs = Theme.of(context).colorScheme;
-                  final watched = alerts.watchedEvents.where(_passes).toList();
-                  final nearby = alerts.nearbyEvents
+                  final distanceLimitMeters = _distanceLimitMeters;
+                  final distanceFilterActive =
+                      alerts.locationEnabled && distanceLimitMeters != null;
+                  final distanceEvents = alerts.nearbyEvents
                       .where((n) => _passes(n.event))
                       .toList();
+                  final distanceById = {
+                    for (final n in distanceEvents) n.event.id: n.distanceMeters,
+                  };
+                  final nearby = distanceEvents
+                      .where(
+                        (n) =>
+                            !distanceFilterActive ||
+                            n.distanceMeters <= distanceLimitMeters,
+                      )
+                      .toList();
+                  final watched = alerts.watchedEvents
+                      .where(_passes)
+                      .where(
+                        (e) =>
+                            !distanceFilterActive ||
+                            (distanceById[e.id] ?? double.infinity) <=
+                                distanceLimitMeters,
+                      )
+                      .toList()
+                    ..sort((a, b) {
+                      final da = distanceById[a.id];
+                      final db = distanceById[b.id];
+                      if (da == null && db == null) return 0;
+                      if (da == null) return 1;
+                      if (db == null) return -1;
+                      return da.compareTo(db);
+                    });
                   final allEvents = alerts.events.where(_passes).toList();
 
                   return ListView(
@@ -297,7 +369,17 @@ class _NearbyTabState extends State<NearbyTab> {
                       else
                         _eventCard(
                           context,
-                          watched.map((e) => _eventRow(context, e)).toList(),
+                          watched
+                              .map(
+                                (e) => _eventRow(
+                                  context,
+                                  e,
+                                  trailing: distanceById[e.id] == null
+                                      ? null
+                                      : _distance(distanceById[e.id]!),
+                                ),
+                              )
+                              .toList(),
                         ),
 
                       const SizedBox(height: 8),
@@ -383,68 +465,85 @@ class _NearbyTabState extends State<NearbyTab> {
   Widget _eventRow(BuildContext context, TrafficEvent e, {String? trailing}) {
     final cs = Theme.of(context).colorScheme;
     final color = EventVisuals.color(e.severity);
+    void openEvent() => showEventSheet(context, e);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => showEventSheet(context, e),
+      onTap: openEvent,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(EventVisuals.causeIcon(e), color: color, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            Row(
+              children: [
+                Icon(EventVisuals.causeIcon(e), color: color, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (e.road.isNotEmpty) ...[
-                        Text(
-                          e.road,
-                          style: TextStyle(
-                            color: color,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
+                      Row(
+                        children: [
+                          if (e.road.isNotEmpty) ...[
+                            Text(
+                              e.road,
+                              style: TextStyle(
+                                color: color,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Expanded(
+                            child: Text(
+                              e.title.isEmpty ? e.cause : e.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      Expanded(
-                        child: Text(
-                          e.title.isEmpty ? e.cause : e.title,
+                        ],
+                      ),
+                      if (e.description.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          e.description,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurfaceVariant,
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
-                  if (e.description.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      e.description,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (trailing != null) ...[
-              const SizedBox(width: 8),
-              Text(
-                trailing,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
                 ),
-              ),
-            ],
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    trailing,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 10),
+            EventMiniMap(
+              event: e,
+              height: 110,
+              borderRadius: 12,
+              showMapButton: false,
+              onTap: openEvent,
+            ),
           ],
         ),
       ),

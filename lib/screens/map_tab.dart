@@ -33,6 +33,9 @@ class MapTab extends StatefulWidget {
 
 class MapTabState extends State<MapTab> {
   final MapController _mapController = MapController();
+  final LayerHitNotifier<TrafficEvent> _eventRoadHitNotifier = ValueNotifier(
+    null,
+  );
 
   // Slovenia centre.
   static const LatLng _sloveniaCenter = LatLng(46.1512, 14.9955);
@@ -55,8 +58,14 @@ class MapTabState extends State<MapTab> {
   final Set<EventSeverity> _eventFilter = {..._severities};
 
   // Affected-area road highlights for the visible events.
-  List<Polyline> _eventRoads = const [];
+  List<Polyline<TrafficEvent>> _eventRoads = const [];
   String _roadsSig = '';
+
+  @override
+  void dispose() {
+    _eventRoadHitNotifier.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -93,10 +102,28 @@ class MapTabState extends State<MapTab> {
     return null;
   }
 
+  static int _mapNoticePriority(TrafficEvent event) => switch (event.severity) {
+    EventSeverity.jam => 0,
+    EventSeverity.closed => 1,
+    EventSeverity.roadworks => 2,
+    EventSeverity.other => 3,
+  };
+
+  static int _compareMapNotices(TrafficEvent a, TrafficEvent b) {
+    final p = _mapNoticePriority(a).compareTo(_mapNoticePriority(b));
+    if (p != 0) return p;
+    final feedPriority = a.priority.compareTo(b.priority);
+    if (feedPriority != 0) return feedPriority;
+    return a.road.compareTo(b.road);
+  }
+
+  static int _compareMapDrawOrder(TrafficEvent a, TrafficEvent b) =>
+      _compareMapNotices(b, a);
+
   /// Recompute the highlighted roads inside each visible event's affected area
   /// when the visible event set changes.
   Future<void> _refreshEventRoads(List<TrafficEvent> events) async {
-    final lines = <Polyline>[];
+    final lines = <Polyline<TrafficEvent>>[];
     for (final e in events) {
       if (!e.hasArea) continue;
       final sw = e.areaSouthWest!, ne = e.areaNorthEast!;
@@ -119,6 +146,7 @@ class MapTabState extends State<MapTab> {
               strokeWidth: 4,
               borderColor: Colors.white.withValues(alpha: 0.5),
               borderStrokeWidth: 1,
+              hitValue: e,
             ),
           );
         }
@@ -130,12 +158,93 @@ class MapTabState extends State<MapTab> {
               points: r.points,
               color: color.withValues(alpha: 0.55),
               strokeWidth: 2,
+              hitValue: e,
             ),
           );
         }
       }
     }
     if (mounted) setState(() => _eventRoads = lines);
+  }
+
+  void _openEventRoadNotices(List<TrafficEvent> events) {
+    final byId = <String, TrafficEvent>{};
+    for (final event in events) {
+      byId[event.id] = event;
+    }
+    final notices = byId.values.toList()..sort(_compareMapNotices);
+    if (notices.isEmpty) return;
+    if (notices.length == 1) {
+      showEventSheet(context, notices.single);
+      return;
+    }
+    _showEventChooser(notices);
+  }
+
+  void _showEventChooser(List<TrafficEvent> events) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Material(
+              color: cs.surface,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                    child: Text(
+                      'Izberi obvestilo',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: events.length,
+                      separatorBuilder: (_, _) => Divider(
+                        height: 1,
+                        color: cs.outline.withValues(alpha: 0.2),
+                      ),
+                      itemBuilder: (context, index) {
+                        final event = events[index];
+                        final color = EventVisuals.color(event.severity);
+                        final title = event.title.isEmpty
+                            ? event.cause
+                            : event.title;
+                        return ListTile(
+                          leading: Icon(
+                            EventVisuals.causeIcon(event),
+                            color: color,
+                          ),
+                          title: Text(title),
+                          subtitle: Text(event.road),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            showEventSheet(context, event);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   bool _stationVisible(WeatherStation s) =>
@@ -150,41 +259,12 @@ class MapTabState extends State<MapTab> {
       (_severities.length - _eventFilter.length);
 
   void _openMapFilters() {
-    var pendingWeather = _showWeather;
-    var pendingCameras = _showCameras;
-    var pendingDarsCameras = _showDarsCameras;
-    var pendingRestAreas = _showRestAreas;
-    var pendingBurja = _showBurja;
-    final pendingEvents = {..._eventFilter};
     final events = context.read<EventsProvider>().events;
     int count(EventSeverity s) => events.where((e) => e.severity == s).length;
 
     showFilterSheet(
       context: context,
       title: 'Prikaz na karti',
-      onReset: () {
-        pendingWeather = true;
-        pendingCameras = true;
-        pendingDarsCameras = true;
-        pendingRestAreas = true;
-        pendingBurja = true;
-        pendingEvents
-          ..clear()
-          ..addAll(_severities);
-      },
-      onApply: () {
-        setState(() {
-          _showWeather = pendingWeather;
-          _showCameras = pendingCameras;
-          _showDarsCameras = pendingDarsCameras;
-          _showRestAreas = pendingRestAreas;
-          _showBurja = pendingBurja;
-          _eventFilter
-            ..clear()
-            ..addAll(pendingEvents);
-        });
-        _saveMapFilters();
-      },
       contentBuilder: (setSheet) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -193,45 +273,63 @@ class MapTabState extends State<MapTab> {
           _switchRow(
             Icons.thermostat,
             'Vremenske postaje',
-            pendingWeather,
-            (v) => setSheet(() => pendingWeather = v),
+            _showWeather,
+            (v) => setSheet(() {
+              setState(() => _showWeather = v);
+              _saveMapFilters();
+            }),
           ),
           _switchRow(
             Icons.videocam,
             'Kamere',
-            pendingCameras,
-            (v) => setSheet(() => pendingCameras = v),
+            _showCameras,
+            (v) => setSheet(() {
+              setState(() => _showCameras = v);
+              _saveMapFilters();
+            }),
           ),
           _switchRow(
             Icons.photo_camera,
             'DARS kamere',
-            pendingDarsCameras,
-            (v) => setSheet(() => pendingDarsCameras = v),
+            _showDarsCameras,
+            (v) => setSheet(() {
+              setState(() => _showDarsCameras = v);
+              _saveMapFilters();
+            }),
           ),
           _switchRow(
             Icons.local_parking,
             'Počivališča',
-            pendingRestAreas,
-            (v) => setSheet(() => pendingRestAreas = v),
+            _showRestAreas,
+            (v) => setSheet(() {
+              setState(() => _showRestAreas = v);
+              _saveMapFilters();
+            }),
           ),
           _switchRow(
             Icons.air,
             'Burja',
-            pendingBurja,
-            (v) => setSheet(() => pendingBurja = v),
+            _showBurja,
+            (v) => setSheet(() {
+              setState(() => _showBurja = v);
+              _saveMapFilters();
+            }),
           ),
           const FilterSectionLabel('Dogodki'),
           for (final s in _severities)
             _switchRow(
               EventVisuals.icon(s),
               '${EventVisuals.label(s)} (${count(s)})',
-              pendingEvents.contains(s),
+              _eventFilter.contains(s),
               (v) => setSheet(() {
-                if (v) {
-                  pendingEvents.add(s);
-                } else {
-                  pendingEvents.remove(s);
-                }
+                setState(() {
+                  if (v) {
+                    _eventFilter.add(s);
+                  } else {
+                    _eventFilter.remove(s);
+                  }
+                });
+                _saveMapFilters();
               }),
               iconColor: EventVisuals.color(s),
             ),
@@ -309,7 +407,8 @@ class MapTabState extends State<MapTab> {
               .watch<EventsProvider>()
               .events
               .where((e) => _eventFilter.contains(e.severity))
-              .toList();
+              .toList()
+            ..sort(_compareMapDrawOrder);
           final myPos = context.watch<AlertsController>().position;
           final myLocation = myPos == null
               ? null
@@ -358,7 +457,15 @@ class MapTabState extends State<MapTab> {
                   ),
                   // Affected-area roads for the visible events (under markers).
                   if (_eventRoads.isNotEmpty)
-                    PolylineLayer(polylines: _eventRoads),
+                    GestureDetector(
+                      onTap: () => _openEventRoadNotices(
+                        _eventRoadHitNotifier.value?.hitValues ?? const [],
+                      ),
+                      child: PolylineLayer<TrafficEvent>(
+                        hitNotifier: _eventRoadHitNotifier,
+                        polylines: _eventRoads,
+                      ),
+                    ),
                   // DARS cameras.
                   if (_showDarsCameras)
                     MarkerLayer(

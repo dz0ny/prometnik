@@ -280,27 +280,11 @@ class _ListTabState extends State<ListTab> {
       (_showDarsCameras ? 0 : 1);
 
   void _openFilters() {
-    var pendingKind = _kind;
-    var pendingFav = _onlyFavorites;
-    var pendingDars = _showDarsCameras;
     final favCount = context.read<FavoritesProvider>().count;
 
     showFilterSheet(
       context: context,
       title: 'Filtri',
-      onReset: () {
-        pendingKind = _KindFilter.all;
-        pendingFav = false;
-        pendingDars = true;
-      },
-      onApply: () {
-        setState(() {
-          _kind = pendingKind;
-          _onlyFavorites = pendingFav;
-          _showDarsCameras = pendingDars;
-        });
-        _saveListFilters();
-      },
       contentBuilder: (setSheet) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -310,7 +294,7 @@ class _ListTabState extends State<ListTab> {
           // that occludes following content in a sheet).
           PlatformInfo.isIOS
               ? CupertinoSlidingSegmentedControl<int>(
-                  groupValue: pendingKind.index,
+                  groupValue: _kind.index,
                   children: const {
                     0: Padding(
                       padding: EdgeInsets.symmetric(vertical: 6),
@@ -321,7 +305,10 @@ class _ListTabState extends State<ListTab> {
                   },
                   onValueChanged: (i) {
                     if (i != null) {
-                      setSheet(() => pendingKind = _KindFilter.values[i]);
+                      setSheet(() {
+                        setState(() => _kind = _KindFilter.values[i]);
+                        _saveListFilters();
+                      });
                     }
                   },
                 )
@@ -332,9 +319,11 @@ class _ListTabState extends State<ListTab> {
                     ButtonSegment(value: 1, label: Text('Vreme')),
                     ButtonSegment(value: 2, label: Text('Kamera')),
                   ],
-                  selected: {pendingKind.index},
-                  onSelectionChanged: (s) =>
-                      setSheet(() => pendingKind = _KindFilter.values[s.first]),
+                  selected: {_kind.index},
+                  onSelectionChanged: (s) => setSheet(() {
+                    setState(() => _kind = _KindFilter.values[s.first]);
+                    _saveListFilters();
+                  }),
                 ),
           const SizedBox(height: 8),
           const FilterSectionLabel('Prikaz'),
@@ -349,8 +338,11 @@ class _ListTabState extends State<ListTab> {
                 ),
               ),
               Switch.adaptive(
-                value: pendingFav,
-                onChanged: (v) => setSheet(() => pendingFav = v),
+                value: _onlyFavorites,
+                onChanged: (v) => setSheet(() {
+                  setState(() => _onlyFavorites = v);
+                  _saveListFilters();
+                }),
               ),
             ],
           ),
@@ -360,8 +352,11 @@ class _ListTabState extends State<ListTab> {
                 child: Text('DARS kamere', style: TextStyle(fontSize: 15)),
               ),
               Switch.adaptive(
-                value: pendingDars,
-                onChanged: (v) => setSheet(() => pendingDars = v),
+                value: _showDarsCameras,
+                onChanged: (v) => setSheet(() {
+                  setState(() => _showDarsCameras = v);
+                  _saveListFilters();
+                }),
               ),
             ],
           ),
