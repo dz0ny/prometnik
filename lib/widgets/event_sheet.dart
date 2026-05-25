@@ -8,6 +8,7 @@ import '../models/traffic_camera.dart';
 import '../models/traffic_event.dart';
 import '../providers/cameras_provider.dart';
 import '../router/navigation_notifier.dart';
+import '../services/map_tile_cache_service.dart';
 import '../services/roads_service.dart';
 import 'camera_sheet.dart';
 import 'event_marker.dart';
@@ -385,6 +386,7 @@ class _MiniMapState extends State<EventMiniMap> {
                     urlTemplate: isDark
                         ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
                         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    tileProvider: MapTileCacheService.instance.createTileProvider(),
                     subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
                     retinaMode: isDark && RetinaMode.isHighDensity(context),
                     userAgentPackageName: 'dev.dz0ny.promet',

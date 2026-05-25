@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../providers/alerts_controller.dart';
 import '../providers/events_provider.dart';
+import '../services/map_tile_cache_service.dart';
 import '../services/roads_service.dart';
 import '../widgets/event_marker.dart';
 
@@ -107,6 +108,7 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
                 urlTemplate: isDark
                     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
                     : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                tileProvider: MapTileCacheService.instance.createTileProvider(),
                 subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
                 retinaMode: isDark && RetinaMode.isHighDensity(context),
                 userAgentPackageName: 'dev.dz0ny.promet',

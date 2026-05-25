@@ -2,6 +2,7 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/travel_time.dart';
+import '../providers/alerts_controller.dart';
 import '../providers/travel_times_provider.dart';
 import '../theme/app_theme.dart';
 
@@ -136,6 +137,8 @@ class _TravelRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final color = TravelTimesTab._statusColor(item.status);
+    final alerts = context.watch<AlertsController>();
+    final watched = alerts.isTravelTimeWatched(item.id);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
@@ -197,6 +200,13 @@ class _TravelRow extends StatelessWidget {
                   ),
               ],
             ),
+          const SizedBox(width: 4),
+          AdaptiveButton.icon(
+            icon: watched ? Icons.notifications_active : Icons.notifications_none,
+            iconColor: watched ? cs.primary : cs.onSurfaceVariant,
+            style: AdaptiveButtonStyle.plain,
+            onPressed: () => alerts.toggleTravelTime(item.id),
+          ),
         ],
       ),
     );

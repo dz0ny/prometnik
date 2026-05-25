@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/traffic_event.dart';
+import '../models/travel_time.dart';
 import '../services/location_service.dart';
 import '../services/notifications_service.dart';
 import '../services/prefs.dart';
@@ -20,6 +21,9 @@ class NearbyEvent {
 class AlertsController extends ChangeNotifier {
   AlertsController() {
     _watchedRoads.addAll(Prefs.getStringList('alerts.watchedRefs', const []));
+    _watchedTravelTimes.addAll(
+      Prefs.getStringList('alerts.watchedTravelTimeIds', const []),
+    );
   }
 
   /// Alert radius for proximity notifications.
@@ -30,7 +34,10 @@ class AlertsController extends ChangeNotifier {
   bool _requesting = false;
   List<TrafficEvent> _events = const [];
   final Set<String> _watchedRoads = {};
+  final Set<String> _watchedTravelTimes = {};
   final Set<String> _notified = {};
+  final Map<String, TravelTime> _travelTimesById = {};
+  final Map<String, TravelTime> _lastTravelAlertById = {};
   StreamSubscription<Position>? _sub;
 
   Position? get position => _position;
@@ -41,15 +48,30 @@ class AlertsController extends ChangeNotifier {
   List<TrafficEvent> get events => List.unmodifiable(_events);
   /// Watched road refs (e.g. "A1", "651").
   Set<String> get watchedRoads => Set.unmodifiable(_watchedRoads);
+  Set<String> get watchedTravelTimes => Set.unmodifiable(_watchedTravelTimes);
   bool get hasWatched => _watchedRoads.isNotEmpty;
 
   bool isWatched(String ref) => _watchedRoads.contains(ref);
+  bool isTravelTimeWatched(String id) => _watchedTravelTimes.contains(id);
 
   /// Toggle a watched road ref (used by the map picker).
   void toggleRoad(String ref) {
     if (ref.isEmpty) return;
     if (!_watchedRoads.add(ref)) _watchedRoads.remove(ref);
     _persistWatched();
+  }
+
+  void toggleTravelTime(String id) {
+    if (id.isEmpty) return;
+    if (!_watchedTravelTimes.add(id)) {
+      _watchedTravelTimes.remove(id);
+      _lastTravelAlertById.remove(id);
+    } else {
+      final current = _travelTimesById[id];
+      if (current != null) _lastTravelAlertById[id] = current;
+      unawaited(NotificationsService.instance.requestPermission());
+    }
+    _persistWatchedTravelTimes();
   }
 
   void setWatched(String ref, bool on) {
@@ -71,6 +93,14 @@ class AlertsController extends ChangeNotifier {
   void _persistWatched() {
     Prefs.setStringList('alerts.watchedRefs', _watchedRoads.toList());
     _checkAlerts();
+    notifyListeners();
+  }
+
+  void _persistWatchedTravelTimes() {
+    Prefs.setStringList(
+      'alerts.watchedTravelTimeIds',
+      _watchedTravelTimes.toList(),
+    );
     notifyListeners();
   }
 
@@ -108,6 +138,18 @@ class AlertsController extends ChangeNotifier {
     _events = events;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAlerts();
+      notifyListeners();
+    });
+  }
+
+  void updateTravelTimes(List<TravelTime> items) {
+    final previous = Map<String, TravelTime>.from(_travelTimesById);
+    _travelTimesById
+      ..clear()
+      ..addEntries(items.map((item) => MapEntry(item.id, item)));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkTravelTimeAlerts(previous);
       notifyListeners();
     });
   }
@@ -181,6 +223,38 @@ class AlertsController extends ChangeNotifier {
     // Forget events that have disappeared so they can re-alert if they return.
     final ids = _events.map((e) => e.id).toSet();
     _notified.removeWhere((id) => !ids.contains(id));
+  }
+
+  void _checkTravelTimeAlerts(Map<String, TravelTime> previous) {
+    for (final id in _watchedTravelTimes) {
+      final current = _travelTimesById[id];
+      if (current == null) continue;
+      final baseline = _lastTravelAlertById[id] ?? previous[id];
+      if (baseline == null) {
+        _lastTravelAlertById[id] = current;
+        continue;
+      }
+      final change = current.delayMs - baseline.delayMs;
+      final statusChanged = current.status != baseline.status;
+      if (!statusChanged && change.abs() < 120000) continue;
+
+      _lastTravelAlertById[id] = current;
+      final worsened = statusChanged
+          ? current.status.index > baseline.status.index
+          : change > 0;
+      NotificationsService.instance.show(
+        id: current.id.hashCode & 0x7fffffff,
+        title: worsened ? 'Potovalni čas se slabša' : 'Potovalni čas se izboljšuje',
+        body: [
+          current.route,
+          current.actualText,
+          if (current.hasDelay) '+${current.delayText}' else 'tekoče',
+        ].join(' · '),
+      );
+    }
+    _lastTravelAlertById.removeWhere(
+      (id, _) => !_watchedTravelTimes.contains(id) || !_travelTimesById.containsKey(id),
+    );
   }
 
   @override

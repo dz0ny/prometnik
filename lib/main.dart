@@ -13,12 +13,14 @@ import 'providers/weather_provider.dart';
 import 'router/app_router.dart';
 import 'router/navigation_notifier.dart';
 import 'screens/intro_wizard_screen.dart';
+import 'services/map_tile_cache_service.dart';
 import 'services/prefs.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Prefs.init();
+  await MapTileCacheService.instance.initialize();
   runApp(const PrometApp());
 }
 
@@ -57,10 +59,16 @@ class _PrometAppState extends State<PrometApp> {
         ChangeNotifierProvider(create: (_) => FavoritesProvider()..load()),
         ChangeNotifierProvider(create: (_) => NavigationNotifier()),
         // Location/watched-road alerts; fed the latest events via the proxy.
-        ChangeNotifierProxyProvider<EventsProvider, AlertsController>(
+        ChangeNotifierProxyProvider2<
+          EventsProvider,
+          TravelTimesProvider,
+          AlertsController
+        >(
           create: (_) => AlertsController()..bootstrap(),
-          update: (_, events, alerts) =>
-              (alerts ?? AlertsController())..updateEvents(events.events),
+          update: (_, events, travelTimes, alerts) =>
+              (alerts ?? AlertsController())
+                ..updateEvents(events.events)
+                ..updateTravelTimes(travelTimes.items),
         ),
       ],
       child: AdaptiveApp.router(
