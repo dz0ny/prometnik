@@ -1,0 +1,270 @@
+name: Build And Upload Release Assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: prometnik
+
+jobs:
+  build-android:
+    name: Build Android App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          pub-cache: true
+          cache-key: flutter-${{ runner.os }}-stable-${{ runner.arch }}
+          pub-cache-key: flutter-pub-${{ runner.os }}-stable-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Configure Android signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/release-keystore.jks
+            {
+              echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+              echo "keyPassword=$ANDROID_KEY_PASSWORD"
+              echo "keyAlias=$ANDROID_KEY_ALIAS"
+              echo "storeFile=../release-keystore.jks"
+            } > android/key.properties
+            echo "Release signing configured."
+          else
+            echo "No ANDROID_KEYSTORE_BASE64 secret. Building debug-signed release artifacts."
+          fi
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Build Play AAB
+        run: flutter build appbundle --release
+
+      - name: Prepare Android artifacts
+        run: |
+          RAW_TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          TAG="${RAW_TAG//\//-}"
+          cp build/app/outputs/flutter-apk/app-release.apk "${APP_NAME}-${TAG}-android.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "${APP_NAME}-${TAG}-play.aab"
+          ls -lah "${APP_NAME}-${TAG}-android.apk" "${APP_NAME}-${TAG}-play.aab"
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: |
+            ${{ env.APP_NAME }}-*-android.apk
+            ${{ env.APP_NAME }}-*-play.aab
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS App
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          pub-cache: true
+          cache-key: flutter-${{ runner.os }}-stable-${{ runner.arch }}
+          pub-cache-key: flutter-pub-${{ runner.os }}-stable-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build macOS release
+        run: flutter build macos --release
+
+      - name: Create macOS DMG
+        run: |
+          RAW_TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          TAG="${RAW_TAG//\//-}"
+          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app bundle found in build output."
+            exit 1
+          fi
+          hdiutil create -volname "Prometnik" -srcfolder "$APP_PATH" -ov -format UDZO "${APP_NAME}-${TAG}-macos.dmg"
+          ls -lah "${APP_NAME}-${TAG}-macos.dmg"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: ${{ env.APP_NAME }}-*-macos.dmg
+          if-no-files-found: error
+
+  build-ios:
+    name: Build iOS App
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          pub-cache: true
+          cache-key: flutter-${{ runner.os }}-stable-${{ runner.arch }}
+          pub-cache-key: flutter-pub-${{ runner.os }}-stable-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build iOS app without codesign
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned iOS artifacts
+        run: |
+          RAW_TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          TAG="${RAW_TAG//\//-}"
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          IPA_NAME="${APP_NAME}-${TAG}-ios-unsigned.ipa"
+          RUNNER_ZIP_NAME="${APP_NAME}-${TAG}-ios-runner-app.zip"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Runner.app not found at $APP_PATH."
+            exit 1
+          fi
+
+          mkdir -p ios_payload/Payload
+          cp -R "$APP_PATH" ios_payload/Payload/
+          (
+            cd ios_payload
+            zip -qry "../${IPA_NAME}" Payload
+          )
+          rm -rf ios_payload
+
+          zip -qry "${RUNNER_ZIP_NAME}" "$APP_PATH"
+          echo "IOS_IPA=${IPA_NAME}" >> "$GITHUB_ENV"
+          echo "IOS_RUNNER_ZIP=${RUNNER_ZIP_NAME}" >> "$GITHUB_ENV"
+          ls -lah "${IPA_NAME}" "${RUNNER_ZIP_NAME}"
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ios
+          path: |
+            ${{ env.IOS_IPA }}
+            ${{ env.IOS_RUNNER_ZIP }}
+          if-no-files-found: error
+
+  build-web:
+    name: Build Web App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          pub-cache: true
+          cache-key: flutter-${{ runner.os }}-stable-${{ runner.arch }}
+          pub-cache-key: flutter-pub-${{ runner.os }}-stable-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
+
+      - name: Enable web
+        run: flutter config --enable-web
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build web release
+        run: flutter build web --wasm --release
+
+      - name: Package web artifact
+        run: |
+          RAW_TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          TAG="${RAW_TAG//\//-}"
+          (cd build/web && zip -qry "../../${APP_NAME}-${TAG}-web.zip" .)
+          ls -lah "${APP_NAME}-${TAG}-web.zip"
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-web
+          path: ${{ env.APP_NAME }}-*-web.zip
+          if-no-files-found: error
+
+  upload-release-assets:
+    name: Upload Assets To Release
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    needs:
+      - build-android
+      - build-macos
+      - build-ios
+      - build-web
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload assets to published release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          body: |
+            Release assets are published for supported build targets:
+            - Android installable APK (`.apk`)
+            - Google Play App Bundle (`.aab`)
+            - iOS unsigned package (`-ios-unsigned.ipa`, `-ios-runner-app.zip`)
+            - macOS disk image (`.dmg`)
+            - Web app bundle (`-web.zip`)
+
+            iOS manual signing and install:
+            1. Download `*-ios-unsigned.ipa` or `*-ios-runner-app.zip`.
+            2. Re-sign it with your Apple certificate and provisioning profile.
+            3. Install the signed `.ipa` using Apple Configurator 2 or Xcode.
+          files: |
+            dist/*.apk
+            dist/*.aab
+            dist/*.dmg
+            dist/*.zip
+            dist/*-ios-unsigned.ipa
+            dist/*-ios-runner-app.zip
+          fail_on_unmatched_files: true

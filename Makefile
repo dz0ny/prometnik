@@ -2,9 +2,10 @@
 # Version format: YYYY.MMDD.N+build (Flutter-compatible semver with date)
 # Example: 2026.0522.1+1
 
-APP_NAME := promet
+APP_NAME := prometnik
 PUBSPEC := pubspec.yaml
 BUILD_DIR := build/app/outputs/flutter-apk
+BUNDLE_DIR := build/app/outputs/bundle/release
 
 YEAR := $(shell date +%Y)
 MMDD := $(shell date +%m%d)
@@ -30,7 +31,7 @@ NEW_VERSION := $(YEAR).$(MMDD).$(DAILY_BUILD)+$(NEW_BUILD_NUMBER)
 NEW_VERSION_NAME := $(YEAR).$(MMDD).$(DAILY_BUILD)
 TAG := v$(NEW_VERSION_NAME)
 
-.PHONY: help version bump deps analyze test run icon build clean release
+.PHONY: help version bump deps analyze test run icon build build-no-bump bundle bundle-no-bump clean release release-android
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -63,15 +64,32 @@ build: bump ## Build release APK (auto-bumps version)
 	flutter build apk --release
 	@ls -lh $(BUILD_DIR)/app-release.apk
 
+build-no-bump: ## Build release APK without bumping version
+	flutter build apk --release
+	@ls -lh $(BUILD_DIR)/app-release.apk
+
+bundle: bump ## Build release App Bundle (auto-bumps version)
+	flutter build appbundle --release
+	@ls -lh $(BUNDLE_DIR)/app-release.aab
+
+bundle-no-bump: ## Build release App Bundle without bumping version
+	flutter build appbundle --release
+	@ls -lh $(BUNDLE_DIR)/app-release.aab
+
 clean: ## Clean build artifacts
 	flutter clean
 
-release: bump ## Bump version, push, and publish a GitHub release (CI builds the APKs)
+release: release-android ## Alias for Android GitHub release
+
+release-android: build ## Build APK and create GitHub release (Android only)
+	$(eval VERSION := $(shell grep '^version:' $(PUBSPEC) | sed 's/version: //' | cut -d'+' -f1))
 	@command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not found — https://cli.github.com"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "Error: not logged in to gh — run 'gh auth login'"; exit 1; }
-	@echo "Releasing $(TAG) (version $(NEW_VERSION))..."
-	@git add $(PUBSPEC)
-	@git commit -m "Release $(TAG)"
-	@git push
-	@gh release create $(TAG) --title "$(TAG)" --generate-notes
-	@echo "Published release $(TAG). The Android Release workflow will build and attach the APKs."
+	@echo "Creating GitHub release v$(VERSION)..."
+	@cp $(BUILD_DIR)/app-release.apk $(BUILD_DIR)/$(APP_NAME)-$(VERSION).apk
+	@gh release create "v$(VERSION)" \
+		"$(BUILD_DIR)/$(APP_NAME)-$(VERSION).apk#Prometnik $(VERSION) APK" \
+		--title "Prometnik v$(VERSION)" \
+		--notes "Release $(VERSION)" \
+		--latest
+	@echo "Release v$(VERSION) created. CI will attach AAB, iOS, macOS, and web artifacts."

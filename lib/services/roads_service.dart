@@ -161,6 +161,34 @@ class RoadsService {
     return out;
   }
 
+  Future<List<RoadLine>> roadsByRefsIn(
+    Set<String> refs,
+    double w,
+    double s,
+    double e,
+    double n,
+  ) async {
+    await _ensureLoaded();
+    if (refs.isEmpty) return const [];
+    final coords = _coords!;
+    final out = <RoadLine>[];
+    for (var i = 0; i < coords.length; i++) {
+      if (_east![i] < w || _west![i] > e || _north![i] < s || _south![i] > n) {
+        continue;
+      }
+      final r = _refs![i];
+      if (r.isEmpty) continue;
+      if (!refs.any((w) => roadRefMatches(w, r))) continue;
+      final f = coords[i];
+      final pts = <LatLng>[];
+      for (var j = 0; j + 1 < f.length; j += 2) {
+        pts.add(LatLng(f[j + 1], f[j]));
+      }
+      out.add(RoadLine(r, _names![i], pts));
+    }
+    return out;
+  }
+
   /// Distance (metres) from point P to segment A→B via local equirectangular
   /// projection around P.
   static double _segDistMeters(

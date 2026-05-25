@@ -9,6 +9,7 @@ import '../models/traffic_event.dart';
 import '../providers/cameras_provider.dart';
 import '../router/navigation_notifier.dart';
 import '../services/map_tile_cache_service.dart';
+import '../services/road_preview_simplifier.dart';
 import '../services/roads_service.dart';
 import 'camera_sheet.dart';
 import 'event_marker.dart';
@@ -302,11 +303,14 @@ class _MiniMapState extends State<EventMiniMap> {
     final e = widget.event;
     if (e.hasArea) {
       final sw = e.areaSouthWest!, ne = e.areaNorthEast!;
-      RoadsService.instance
-          .roadsIn(sw.longitude, sw.latitude, ne.longitude, ne.latitude)
-          .then((roads) {
-            if (mounted) setState(() => _roads = roads);
-          });
+      RoadPreviewSimplifier.roadsIn(
+        sw.longitude,
+        sw.latitude,
+        ne.longitude,
+        ne.latitude,
+      ).then((roads) {
+        if (mounted) setState(() => _roads = roads);
+      });
     }
   }
 
@@ -325,6 +329,7 @@ class _MiniMapState extends State<EventMiniMap> {
     final others = _roads.where((r) => !roadRefMatches(eref, r.ref)).toList();
     final hasMatch = matched.isNotEmpty;
     return PolylineLayer(
+      simplificationTolerance: 2,
       polylines: [
         // Context roads (faint when a specific road is matched, else moderate).
         for (final r in others)
