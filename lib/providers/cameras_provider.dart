@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/traffic_camera.dart';
+import '../models/weather_station.dart';
 import '../services/cameras_service.dart';
 
 /// Holds the DARS camera list and refreshes it periodically. The camera set is
@@ -24,6 +26,20 @@ class CamerasProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasData => _cameras.isNotEmpty;
+
+  List<TrafficCamera> visibleCameras(List<WeatherStation> stations) {
+    return _cameras.where((camera) => !_duplicatesStation(camera, stations)).toList();
+  }
+
+  bool _duplicatesStation(TrafficCamera camera, List<WeatherStation> stations) {
+    const distance = Distance();
+    for (final station in stations) {
+      if (station.cameraLink.isEmpty) continue;
+      if (!station.hasWeather) continue;
+      if (distance(camera.position, station.position) <= 80) return true;
+    }
+    return false;
+  }
 
   void start() {
     refresh();

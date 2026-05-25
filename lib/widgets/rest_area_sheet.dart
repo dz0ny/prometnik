@@ -1,4 +1,6 @@
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/rest_area.dart';
 
 const _amenityIcons = <String, (IconData, String)>{
@@ -39,6 +41,28 @@ class _RestAreaSheet extends StatelessWidget {
 
   const _RestAreaSheet({required this.area});
 
+  Future<void> _openDirections(BuildContext context) async {
+    final lat = area.position.latitude;
+    final lon = area.position.longitude;
+    final label = Uri.encodeComponent(
+      area.title.isEmpty ? 'Počivališče' : area.title,
+    );
+    final uri = PlatformInfo.isIOS
+        ? Uri.parse('https://maps.apple.com/?daddr=$lat,$lon&q=$label')
+        : Uri.parse(
+            'https://www.google.com/maps/dir/?api=1&destination=$lat,$lon&travelmode=driving',
+          );
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (context.mounted) {
+        AdaptiveSnackBar.show(
+          context,
+          message: 'Navigacije ni mogoče odpreti',
+          type: AdaptiveSnackBarType.error,
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -78,6 +102,11 @@ class _RestAreaSheet extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Navigacija',
+                  icon: const Icon(Icons.directions),
+                  onPressed: () => _openDirections(context),
                 ),
               ],
             ),

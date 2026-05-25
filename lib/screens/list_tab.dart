@@ -237,7 +237,7 @@ class _ListTabState extends State<ListTab> {
                           _kind != _KindFilter.weather)
                       ? context
                             .watch<CamerasProvider>()
-                            .cameras
+                            .visibleCameras(provider.stations)
                             .where(_matchesCamera)
                             .toList()
                       : <TrafficCamera>[];

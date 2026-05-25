@@ -5,7 +5,7 @@
     "display": "standalone",
     "background_color": "#0D1B2A",
     "theme_color": "#1B263B",
-    "description": "A new Flutter project.",
+    "description": "Promet, kamere, vreme, potovalni časi in opozorila na slovenskih cestah.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

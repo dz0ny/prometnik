@@ -46,6 +46,26 @@ class NotificationsService {
     return true;
   }
 
+  Future<bool> notificationsEnabled() async {
+    await init();
+    final ios = _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    if (ios != null) {
+      final permissions = await ios.checkPermissions();
+      return permissions?.isEnabled ?? false;
+    }
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (android != null) {
+      return await android.areNotificationsEnabled() ?? true;
+    }
+    return true;
+  }
+
   Future<void> show({
     required int id,
     required String title,

@@ -129,63 +129,6 @@ jobs:
           path: ${{ env.APP_NAME }}-*-macos.dmg
           if-no-files-found: error
 
-  build-ios:
-    name: Build iOS App
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-          pub-cache: true
-          cache-key: flutter-${{ runner.os }}-stable-${{ runner.arch }}
-          pub-cache-key: flutter-pub-${{ runner.os }}-stable-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
-
-      - name: Install Flutter dependencies
-        run: flutter pub get
-
-      - name: Build iOS app without codesign
-        run: flutter build ios --release --no-codesign
-
-      - name: Package unsigned iOS artifacts
-        run: |
-          RAW_TAG="${{ github.event.release.tag_name || github.ref_name }}"
-          TAG="${RAW_TAG//\//-}"
-          APP_PATH="build/ios/iphoneos/Runner.app"
-          IPA_NAME="${APP_NAME}-${TAG}-ios-unsigned.ipa"
-          RUNNER_ZIP_NAME="${APP_NAME}-${TAG}-ios-runner-app.zip"
-          if [ ! -d "$APP_PATH" ]; then
-            echo "Runner.app not found at $APP_PATH."
-            exit 1
-          fi
-
-          mkdir -p ios_payload/Payload
-          cp -R "$APP_PATH" ios_payload/Payload/
-          (
-            cd ios_payload
-            zip -qry "../${IPA_NAME}" Payload
-          )
-          rm -rf ios_payload
-
-          zip -qry "${RUNNER_ZIP_NAME}" "$APP_PATH"
-          echo "IOS_IPA=${IPA_NAME}" >> "$GITHUB_ENV"
-          echo "IOS_RUNNER_ZIP=${RUNNER_ZIP_NAME}" >> "$GITHUB_ENV"
-          ls -lah "${IPA_NAME}" "${RUNNER_ZIP_NAME}"
-
-      - name: Upload iOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-ios
-          path: |
-            ${{ env.IOS_IPA }}
-            ${{ env.IOS_RUNNER_ZIP }}
-          if-no-files-found: error
-
   build-web:
     name: Build Web App
     runs-on: ubuntu-latest
@@ -233,7 +176,6 @@ jobs:
     needs:
       - build-android
       - build-macos
-      - build-ios
       - build-web
 
     steps:
@@ -252,19 +194,11 @@ jobs:
             Release assets are published for supported build targets:
             - Android installable APK (`.apk`)
             - Google Play App Bundle (`.aab`)
-            - iOS unsigned package (`-ios-unsigned.ipa`, `-ios-runner-app.zip`)
             - macOS disk image (`.dmg`)
             - Web app bundle (`-web.zip`)
-
-            iOS manual signing and install:
-            1. Download `*-ios-unsigned.ipa` or `*-ios-runner-app.zip`.
-            2. Re-sign it with your Apple certificate and provisioning profile.
-            3. Install the signed `.ipa` using Apple Configurator 2 or Xcode.
           files: |
             dist/*.apk
             dist/*.aab
             dist/*.dmg
             dist/*.zip
-            dist/*-ios-unsigned.ipa
-            dist/*-ios-runner-app.zip
           fail_on_unmatched_files: true

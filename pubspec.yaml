@@ -1,5 +1,5 @@
 name: promet
-description: "Vreme in kamere na slovenskih cestah (DARS / ceste.si)."
+description: "Promet, kamere, vreme, potovalni časi in opozorila na slovenskih cestah."
 publish_to: 'none'
 
 # Version format: YYYY.MMDD.DAILY+BUILD (see Makefile)

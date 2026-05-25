@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/alerts_controller.dart';
 import '../router/route_names.dart';
+import '../services/notifications_service.dart';
 import '../services/prefs.dart';
 
 /// First-run onboarding wizard. Bump [version] when the content changes to
@@ -11,7 +12,7 @@ import '../services/prefs.dart';
 class IntroWizardScreen extends StatefulWidget {
   const IntroWizardScreen({super.key});
 
-  static const int version = 1;
+  static const int version = 2;
   static const String _key = 'onboarding.version';
 
   /// Whether the wizard should be shown (not yet completed for this version).
@@ -26,6 +27,16 @@ class IntroWizardScreen extends StatefulWidget {
 class _IntroWizardScreenState extends State<IntroWizardScreen> {
   final _controller = PageController();
   int _page = 0;
+  bool _notificationsEnabled = false;
+  bool _requestingNotifications = false;
+
+  @override
+  void initState() {
+    super.initState();
+    NotificationsService.instance.notificationsEnabled().then((enabled) {
+      if (mounted) setState(() => _notificationsEnabled = enabled);
+    });
+  }
 
   @override
   void dispose() {
@@ -75,6 +86,23 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
       ),
     ),
     _Page(
+      icon: Icons.notifications_active_outlined,
+      title: 'Obvestila',
+      body:
+          'Za spremljane ceste in potovalne čase lahko Prometnik pošlje '
+          'obvestilo, ko se pojavijo dogodki ali ko se potovalni čas izboljša '
+          'oziroma poslabša.',
+      child: AdaptiveButton(
+        onPressed: _notificationsEnabled || _requestingNotifications
+            ? () {}
+            : _enableNotifications,
+        label: _notificationsEnabled
+            ? 'Obvestila vklopljena'
+            : (_requestingNotifications ? 'Pridobivanje…' : 'Vklopi obvestila'),
+        style: AdaptiveButtonStyle.tinted,
+      ),
+    ),
+    _Page(
       icon: Icons.verified_outlined,
       title: 'Viri podatkov',
       body:
@@ -97,6 +125,18 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
   void _finish() {
     IntroWizardScreen.markCompleted();
     if (mounted) context.go(AppRoutes.map);
+  }
+
+  Future<void> _enableNotifications() async {
+    if (_requestingNotifications || _notificationsEnabled) return;
+    setState(() => _requestingNotifications = true);
+    final enabled = await NotificationsService.instance.requestPermission();
+    if (mounted) {
+      setState(() {
+        _notificationsEnabled = enabled;
+        _requestingNotifications = false;
+      });
+    }
   }
 
   @override

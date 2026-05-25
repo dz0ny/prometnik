@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/traffic_camera.dart';
 import '../models/traffic_event.dart';
 import '../providers/cameras_provider.dart';
+import '../providers/weather_provider.dart';
 import '../router/navigation_notifier.dart';
 import '../services/map_tile_cache_service.dart';
 import '../services/road_preview_simplifier.dart';
@@ -52,7 +53,8 @@ class EventSheet extends StatelessWidget {
   List<Widget> _camerasSection(BuildContext context, ColorScheme cs) {
     if (!event.hasArea) return const [];
     final sw = event.areaSouthWest!, ne = event.areaNorthEast!;
-    final cams = context.watch<CamerasProvider>().cameras.where((c) {
+    final stations = context.watch<WeatherProvider>().stations;
+    final cams = context.watch<CamerasProvider>().visibleCameras(stations).where((c) {
       final p = c.position;
       return p.latitude >= sw.latitude &&
           p.latitude <= ne.latitude &&

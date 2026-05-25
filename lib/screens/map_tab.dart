@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import '../models/rest_area.dart';
 import '../models/traffic_event.dart';
 import '../models/weather_station.dart';
 import '../providers/alerts_controller.dart';
@@ -248,6 +249,97 @@ class MapTabState extends State<MapTab> {
     );
   }
 
+  List<_RestAreaGroup> _restAreaGroups(List<RestArea> areas) {
+    const distance = Distance();
+    final groups = <_RestAreaGroup>[];
+    for (final area in areas) {
+      _RestAreaGroup? match;
+      for (final group in groups) {
+        if (distance(area.position, group.position) <= 500) {
+          match = group;
+          break;
+        }
+      }
+      if (match == null) {
+        groups.add(_RestAreaGroup([area]));
+      } else {
+        match.areas.add(area);
+      }
+    }
+    for (final group in groups) {
+      group.areas.sort((a, b) => a.title.compareTo(b.title));
+    }
+    return groups;
+  }
+
+  void _openRestAreaGroup(List<RestArea> areas) {
+    if (areas.length == 1) {
+      showRestAreaSheet(context, areas.single);
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Material(
+              color: cs.surface,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                    child: Text(
+                      'Izberi počivališče',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: areas.length,
+                      separatorBuilder: (_, _) => Divider(
+                        height: 1,
+                        color: cs.outline.withValues(alpha: 0.2),
+                      ),
+                      itemBuilder: (context, index) {
+                        final area = areas[index];
+                        final color = restAreaColor(area);
+                        return ListTile(
+                          leading: Icon(Icons.local_parking, color: color),
+                          title: Text(
+                            area.title.isEmpty ? 'Počivališče' : area.title,
+                          ),
+                          subtitle: area.hasLiveAvailability
+                              ? Text('${area.available} / ${area.total} prostih')
+                              : const Text('Ni podatkov o zasedenosti'),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            showRestAreaSheet(context, area);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   bool _stationVisible(WeatherStation s) =>
       s.hasWeather ? _showWeather : _showCameras;
 
@@ -473,7 +565,9 @@ class MapTabState extends State<MapTab> {
                     MarkerLayer(
                       markers: [
                         for (final cam
-                            in context.watch<CamerasProvider>().cameras)
+                            in context.watch<CamerasProvider>().visibleCameras(
+                              context.watch<WeatherProvider>().stations,
+                            ))
                           Marker(
                             point: cam.position,
                             width: 26,
@@ -488,17 +582,16 @@ class MapTabState extends State<MapTab> {
                   if (_showRestAreas)
                     MarkerLayer(
                       markers: [
-                        for (final area
-                            in context.watch<RestAreasProvider>().items)
+                        for (final group in _restAreaGroups(
+                          context.watch<RestAreasProvider>().items,
+                        ))
                           Marker(
-                            point: area.position,
-                            width: area.hasLiveAvailability ? 78 : 26,
-                            height: 26,
+                            point: group.position,
+                            width: group.markerWidth,
+                            height: group.markerHeight,
                             child: _RestAreaMarker(
-                              color: restAreaColor(area),
-                              available: area.available,
-                              total: area.total,
-                              onTap: () => showRestAreaSheet(context, area),
+                              areas: group.areas,
+                              onTap: () => _openRestAreaGroup(group.areas),
                             ),
                           ),
                       ],
@@ -674,19 +767,13 @@ class _CameraMarker extends StatelessWidget {
 /// it becomes a pill showing the free/total space count next to a "P" badge;
 /// otherwise it falls back to a compact square "P".
 class _RestAreaMarker extends StatelessWidget {
-  final Color color;
-  final int available;
-  final int total;
+  final List<RestArea> areas;
   final VoidCallback onTap;
 
   const _RestAreaMarker({
-    required this.color,
-    required this.available,
-    required this.total,
+    required this.areas,
     required this.onTap,
   });
-
-  bool get _live => total > 0;
 
   @override
   Widget build(BuildContext context) {
@@ -694,7 +781,8 @@ class _RestAreaMarker extends StatelessWidget {
       BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1)),
     ];
 
-    if (!_live) {
+    if (areas.length == 1 && !areas.single.hasLiveAvailability) {
+      final color = restAreaColor(areas.single);
       return GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
@@ -717,62 +805,144 @@ class _RestAreaMarker extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Center(
         child: Container(
-          padding: const EdgeInsets.fromLTRB(3, 3, 8, 3),
+          padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
-            color: color,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(13),
             border: Border.all(color: Colors.white, width: 1.5),
             boxShadow: shadow,
           ),
-          child: Row(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // "P" badge in a white circle.
-              Container(
-                width: 18,
-                height: 18,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  'P',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              // Free count, emphasised, over the total.
-              Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(text: '$available'),
-                    TextSpan(
-                      text: '/$total',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ],
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                ),
-              ),
+              for (var i = 0; i < areas.length; i++) ...[
+                _RestAreaAvailabilityPill(area: areas[i]),
+                if (i < areas.length - 1) const SizedBox(height: 3),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+class _RestAreaAvailabilityPill extends StatelessWidget {
+  final RestArea area;
+
+  const _RestAreaAvailabilityPill({required this.area});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = restAreaColor(area);
+    if (!area.hasLiveAvailability) {
+      return Container(
+        width: 22,
+        height: 20,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Text(
+          'P',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            height: 1,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(3, 2, 7, 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 16,
+            height: 16,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              'P',
+              style: TextStyle(
+                color: color,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: '${area.available}'),
+                TextSpan(
+                  text: '/${area.total}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RestAreaGroup {
+  final List<RestArea> areas;
+
+  _RestAreaGroup(this.areas);
+
+  LatLng get position {
+    var lat = 0.0;
+    var lon = 0.0;
+    for (final area in areas) {
+      lat += area.position.latitude;
+      lon += area.position.longitude;
+    }
+    return LatLng(lat / areas.length, lon / areas.length);
+  }
+
+  double get markerWidth {
+    var maxTotal = 0;
+    var maxAvailable = 0;
+    var hasLive = false;
+    for (final area in areas) {
+      if (!area.hasLiveAvailability) continue;
+      hasLive = true;
+      if (area.total > maxTotal) maxTotal = area.total;
+      if (area.available > maxAvailable) maxAvailable = area.available;
+    }
+    if (!hasLive) return 30;
+    final digits = '$maxAvailable/$maxTotal'.length;
+    return 34 + digits * 7.5;
+  }
+
+  double get markerHeight {
+    if (areas.length == 1) return 26;
+    return 6 + areas.length * 23 + (areas.length - 1) * 3;
   }
 }
 
