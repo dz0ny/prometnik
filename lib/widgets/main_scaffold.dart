@@ -122,8 +122,8 @@ class _MainScaffoldState extends State<MainScaffold> {
       bottomNavigationBar: AdaptiveBottomNavigationBar(
         selectedIndex: index,
         onTap: _handleTabTap,
-        selectedItemColor: cs.primary,
-        unselectedItemColor: cs.onSurfaceVariant,
+        selectedItemColor: PlatformInfo.isIOS ? cs.primary : null,
+        unselectedItemColor: PlatformInfo.isIOS ? cs.onSurfaceVariant : null,
         items: [
           _dest(
             label: 'Karta',
