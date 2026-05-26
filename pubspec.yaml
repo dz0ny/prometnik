@@ -3,7 +3,7 @@ description: "Promet, kamere, vreme, potovalni časi in opozorila na slovenskih 
 publish_to: 'none'
 
 # Version format: YYYY.MMDD.DAILY+BUILD (see Makefile)
-version: 2026.0525.4+11
+version: 2026.0526.1+12
 
 environment:
   sdk: ^3.9.2
