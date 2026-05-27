@@ -2,6 +2,7 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/traffic_camera.dart';
@@ -48,43 +49,6 @@ class EventSheet extends StatelessWidget {
     }
   }
 
-  /// DARS cameras whose location falls within the event's affected-area bbox,
-  /// shown as full-width live images.
-  List<Widget> _camerasSection(BuildContext context, ColorScheme cs) {
-    if (!event.hasArea) return const [];
-    final sw = event.areaSouthWest!, ne = event.areaNorthEast!;
-    final stations = context.watch<WeatherProvider>().stations;
-    final cams = context.watch<CamerasProvider>().visibleCameras(stations).where((c) {
-      final p = c.position;
-      return p.latitude >= sw.latitude &&
-          p.latitude <= ne.latitude &&
-          p.longitude >= sw.longitude &&
-          p.longitude <= ne.longitude;
-    }).toList();
-    if (cams.isEmpty) return const [];
-    return [
-      const SizedBox(height: 16),
-      Row(
-        children: [
-          Icon(Icons.photo_camera, size: 16, color: cs.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Text(
-            'Kamere v območju (${cams.length})',
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-      for (final c in cams) ...[
-        const SizedBox(height: 10),
-        _EventCameraCard(camera: c),
-      ],
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -118,7 +82,8 @@ class EventSheet extends StatelessWidget {
               _Hero(event: event),
               const SizedBox(height: 14),
               EventMiniMap(event: event),
-              ..._camerasSection(context, cs),
+              const SizedBox(height: 16),
+              EventNearbyCamerasSection(event: event),
               if (event.description.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Text(
@@ -176,7 +141,7 @@ class EventSheet extends StatelessWidget {
   }
 }
 
-/// Severity-tinted hero: cause icon, severity label + road badge, and title.
+/// Compact event header with severity, road, title, and update time.
 class _Hero extends StatelessWidget {
   final TrafficEvent event;
 
@@ -188,84 +153,101 @@ class _Hero extends StatelessWidget {
     final color = EventVisuals.color(event.severity);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: 0.28),
-            color.withValues(alpha: 0.08),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.55)),
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                 child: Icon(
                   EventVisuals.causeIcon(event),
                   color: Colors.white,
-                  size: 22,
+                  size: 17,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          event.cause.isEmpty
+                              ? EventVisuals.label(event.severity)
+                              : event.cause,
+                          style: TextStyle(
+                            color: color,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                        ),
+                        if (event.road.isNotEmpty)
+                          Text(
+                            event.road,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
+                          ),
+                        if (event.isRoadClosed)
+                          _Pill(
+                            text: 'Zaprto',
+                            color: const Color(0xFFE53935),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
                     Text(
-                      event.cause.isEmpty
+                      event.title.isEmpty
                           ? EventVisuals.label(event.severity)
-                          : event.cause,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: color,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
+                          : event.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        height: 1.15,
                       ),
                     ),
-                    if (event.road.isNotEmpty)
-                      Text(
-                        event.road,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
+                    if (event.updated != null) ...[
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.schedule,
+                            size: 13,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              WeatherFormat.timestamp(event.updated),
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                    ],
                   ],
                 ),
               ),
-              if (event.isRoadClosed)
-                _Pill(text: 'Zaprto', color: const Color(0xFFE53935)),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            event.title.isEmpty ? EventVisuals.label(event.severity) : event.title,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-          if (event.updated != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.schedule, size: 13, color: cs.onSurfaceVariant),
-                const SizedBox(width: 5),
-                Text(
-                  'Posodobljeno: ${WeatherFormat.timestamp(event.updated)}',
-                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -449,11 +431,98 @@ class _MiniMapState extends State<EventMiniMap> {
   }
 }
 
+class EventNearbyCamerasSection extends StatefulWidget {
+  final TrafficEvent event;
+
+  const EventNearbyCamerasSection({super.key, required this.event});
+
+  @override
+  State<EventNearbyCamerasSection> createState() =>
+      _EventNearbyCamerasSectionState();
+}
+
+class _EventNearbyCamerasSectionState extends State<EventNearbyCamerasSection> {
+  static const double _fallbackRadiusMeters = 8000;
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final stations = context.watch<WeatherProvider>().stations;
+    final cameras = context
+        .watch<CamerasProvider>()
+        .visibleCameras(stations)
+        .where(_isNearby)
+        .toList()
+      ..sort(_compareByDistance);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.photo_camera, size: 16, color: cs.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Kamere v bližini (${cameras.length})',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            Switch.adaptive(
+              value: _expanded,
+              onChanged: (value) => setState(() => _expanded = value),
+            ),
+          ],
+        ),
+        if (_expanded && cameras.isEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'V bližini ni kamer.',
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+          ),
+        ],
+        if (_expanded)
+          for (final camera in cameras) ...[
+            const SizedBox(height: 10),
+            EventCameraCard(camera: camera),
+          ],
+      ],
+    );
+  }
+
+  bool _isNearby(TrafficCamera camera) {
+    final event = widget.event;
+    final point = camera.position;
+    if (event.hasArea) {
+      final sw = event.areaSouthWest!, ne = event.areaNorthEast!;
+      if (point.latitude >= sw.latitude &&
+          point.latitude <= ne.latitude &&
+          point.longitude >= sw.longitude &&
+          point.longitude <= ne.longitude) {
+        return true;
+      }
+    }
+    return const Distance()(event.position, point) <= _fallbackRadiusMeters;
+  }
+
+  int _compareByDistance(TrafficCamera a, TrafficCamera b) {
+    const distance = Distance();
+    return distance(widget.event.position, a.position).compareTo(
+      distance(widget.event.position, b.position),
+    );
+  }
+}
+
 /// A full-width live DARS camera image inside an event detail; tap to open.
-class _EventCameraCard extends StatelessWidget {
+class EventCameraCard extends StatelessWidget {
   final TrafficCamera camera;
 
-  const _EventCameraCard({required this.camera});
+  const EventCameraCard({super.key, required this.camera});
 
   @override
   Widget build(BuildContext context) {
