@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../models/traffic_camera.dart';
 import '../models/traffic_event.dart';
 import '../providers/cameras_provider.dart';
@@ -19,7 +20,6 @@ import 'event_marker.dart';
 import 'event_visuals.dart';
 import 'weather_details.dart' show WeatherFormat;
 import 'sheet_snack.dart';
-import '../theme/app_theme.dart';
 import 'app_sheet.dart';
 
 /// Present [event] details in a modal bottom sheet. Shared by the map markers
@@ -60,14 +60,32 @@ class EventSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final color = EventVisuals.color(event.severity);
+    final title = event.title.isEmpty
+        ? EventVisuals.label(event.severity)
+        : event.title;
+    final subtitle = [
+      ?_causeLabel(event, title),
+      ?eventRoadLabel(event.road),
+    ].join(' · ');
 
     return AppSheet(
+      title: title,
+      titleMaxLines: 2,
+      subtitle: subtitle.isEmpty ? null : subtitle,
+      leading: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        child: Icon(
+          EventVisuals.causeIcon(event),
+          color: Colors.white,
+          size: 17,
+        ),
+      ),
       children: [
-        _Hero(event: event),
-        const SizedBox(height: 14),
+        _MetaRow(event: event),
         EventMiniMap(event: event),
-        const SizedBox(height: 16),
-        EventNearbyCamerasSection(event: event),
         if (event.description.isNotEmpty) ...[
           const SizedBox(height: 14),
           Text(
@@ -106,118 +124,74 @@ class EventSheet extends StatelessWidget {
             ),
           ),
         ],
+        // Cameras come after the event's own information.
+        const SizedBox(height: 20),
+        EventNearbyCamerasSection(event: event),
       ],
     );
   }
+
+  /// The feed's short cause ("dela", "zastoj"), capitalised, unless it just
+  /// repeats the title.
+  static String? _causeLabel(TrafficEvent event, String title) {
+    final cause = event.cause.trim();
+    if (cause.isEmpty) return null;
+    if (cause.toLowerCase() == title.trim().toLowerCase()) return null;
+    return cause[0].toUpperCase() + cause.substring(1);
+  }
 }
 
-/// Compact event header with severity, road, title, and update time.
-class _Hero extends StatelessWidget {
+/// The road to show for an event, or null when the feed's `Cesta` is an
+/// internal id (e.g. "LZ-212840" for a local road) rather than a road number
+/// ("A1", "H4", "G1-5", "R3-651") or a street name.
+String? eventRoadLabel(String road) {
+  final r = road.trim();
+  if (r.isEmpty) return null;
+  final ref = RegExp(r'^(?:[AH]\d{1,2}|[GR][123]-\d{1,4}|RT-\d{1,4})(?:\b|-)');
+  if (ref.hasMatch(r.toUpperCase())) {
+    // Drop the European route suffix: "A1-E57" → "A1".
+    return r.replaceFirst(RegExp(r'-E\d+.*$', caseSensitive: false), '');
+  }
+  // A name: has at least one lowercase word, not just a code and digits.
+  if (RegExp(r'[a-zčšžćđ]{3,}').hasMatch(r)) return r;
+  return null;
+}
+
+/// "Zaprto" badge and the last-update time, under the sheet header.
+class _MetaRow extends StatelessWidget {
   final TrafficEvent event;
 
-  const _Hero({required this.event});
+  const _MetaRow({required this.event});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final color = EventVisuals.color(event.severity);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    if (!event.isRoadClosed && event.updated == null) {
+      return const SizedBox(height: 4);
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                child: Icon(
-                  EventVisuals.causeIcon(event),
-                  color: Colors.white,
-                  size: 17,
+          if (event.isRoadClosed)
+            const _Pill(text: 'Zaprto', color: Color(0xFFE53935)),
+          if (event.updated != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.schedule, size: 13, color: cs.onSurfaceVariant),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    'Posodobljeno: ${WeatherFormat.timestamp(event.updated)}',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 2,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          event.cause.isEmpty
-                              ? EventVisuals.label(event.severity)
-                              : event.cause,
-                          style: TextStyle(
-                            color: AppTheme.readableText(
-                              color,
-                              Theme.of(context).brightness,
-                            ),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                          ),
-                        ),
-                        if (event.road.isNotEmpty)
-                          Text(
-                            event.road,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                            ),
-                          ),
-                        if (event.isRoadClosed)
-                          _Pill(text: 'Zaprto', color: const Color(0xFFE53935)),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      event.title.isEmpty
-                          ? EventVisuals.label(event.severity)
-                          : event.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        height: 1.15,
-                      ),
-                    ),
-                    if (event.updated != null) ...[
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.schedule,
-                            size: 13,
-                            color: cs.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              WeatherFormat.timestamp(event.updated),
-                              style: TextStyle(
-                                color: cs.onSurfaceVariant,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );
@@ -317,83 +291,106 @@ class _MiniMapState extends State<EventMiniMap> {
     final color = EventVisuals.color(event.severity);
 
     final hasArea = event.hasArea;
+    // Include the marker itself so it is always inside the fitted view.
     final bounds = hasArea
-        ? LatLngBounds(event.areaSouthWest!, event.areaNorthEast!)
+        ? LatLngBounds.fromPoints([
+            event.areaSouthWest!,
+            event.areaNorthEast!,
+            event.position,
+          ])
         : null;
+    // Keep the marker clear of the "Pokaži na karti" pill (bottom right).
+    final fitPadding = widget.showMapButton
+        ? const EdgeInsets.fromLTRB(28, 24, 48, 52)
+        : const EdgeInsets.all(28);
 
-    return GestureDetector(
-      onTap: _jumpToMap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(widget.borderRadius),
-        child: SizedBox(
-          height: widget.height,
-          child: Stack(
-            children: [
-              FlutterMap(
-                options: MapOptions(
-                  initialCenter: event.position,
-                  initialZoom: 13,
-                  initialCameraFit: bounds == null
-                      ? null
-                      : CameraFit.bounds(
-                          bounds: bounds,
-                          padding: const EdgeInsets.all(28),
-                          maxZoom: 15,
-                        ),
-                  // Static preview — the sheet handles the tap (jump to map).
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
-                  ),
-                ),
-                children: [
-                  buildBaseTileLayer(
-                    context,
-                    base: BaseMap.saved,
-                    isDark: isDark,
-                  ),
-                  // Roads within the affected area. The road matching the
-                  // event's number is emphasised; others provide faint context.
-                  if (_roads.isNotEmpty) _roadLayer(color),
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: event.position,
-                        width: 28,
-                        height: 28,
-                        child: EventMarker(event: event, onTap: _jumpToMap),
+    return Semantics(
+      button: true,
+      label: widget.onTap == null ? 'Pokaži na karti' : null,
+      child: GestureDetector(
+        // Opaque: the map below is wrapped in IgnorePointer, so without this
+        // the map area would not be hit-testable and taps would be lost.
+        behavior: HitTestBehavior.opaque,
+        onTap: _jumpToMap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(widget.borderRadius),
+          child: SizedBox(
+            height: widget.height,
+            child: Stack(
+              children: [
+                // Static preview: FlutterMap would otherwise swallow taps even
+                // with interactions off; the whole card handles the tap.
+                IgnorePointer(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: event.position,
+                      initialZoom: 13,
+                      initialCameraFit: bounds == null
+                          ? null
+                          : CameraFit.bounds(
+                              bounds: bounds,
+                              padding: fitPadding,
+                              maxZoom: 15,
+                            ),
+                      // Avoid a light-grey flash in dark mode while tiles load.
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.none,
+                      ),
+                    ),
+                    children: [
+                      buildBaseTileLayer(
+                        context,
+                        base: BaseMap.saved,
+                        isDark: isDark,
+                      ),
+                      // Roads within the affected area. The road matching the
+                      // event's number is emphasised; others provide faint context.
+                      if (_roads.isNotEmpty) _roadLayer(color),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: event.position,
+                            width: 28,
+                            height: 28,
+                            child: EventMarker(event: event, onTap: _jumpToMap),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-              // "Open on map" affordance.
-              if (widget.showMapButton)
-                Positioned(
-                  right: 8,
-                  bottom: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.map, size: 14, color: Colors.white),
-                        SizedBox(width: 5),
-                        Text(
-                          'Pokaži na karti',
-                          style: TextStyle(color: Colors.white, fontSize: 11),
-                        ),
-                      ],
+                ),
+                // "Open on map" affordance.
+                if (widget.showMapButton)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.map, size: 14, color: Colors.white),
+                          SizedBox(width: 5),
+                          Text(
+                            'Pokaži na karti',
+                            style: TextStyle(color: Colors.white, fontSize: 11),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -413,7 +410,10 @@ class EventNearbyCamerasSection extends StatefulWidget {
 
 class _EventNearbyCamerasSectionState extends State<EventNearbyCamerasSection> {
   static const double _fallbackRadiusMeters = 8000;
-  bool _expanded = true;
+
+  /// Nearest cameras shown before "Prikaži vse".
+  static const int _collapsedCount = 3;
+  bool _showAll = false;
 
   @override
   Widget build(BuildContext context) {
@@ -426,42 +426,52 @@ class _EventNearbyCamerasSectionState extends State<EventNearbyCamerasSection> {
             .where(_isNearby)
             .toList()
           ..sort(_compareByDistance);
+    final shown = _showAll ? cameras : cameras.take(_collapsedCount).toList();
+    final canToggle = cameras.length > _collapsedCount;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Icon(Icons.photo_camera, size: 16, color: cs.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Kamere v bližini (${cameras.length})',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+        Semantics(
+          header: true,
+          child: Row(
+            children: [
+              Icon(Icons.photo_camera, size: 16, color: cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Kamere v bližini (${cameras.length})',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
               ),
-            ),
-            Switch.adaptive(
-              value: _expanded,
-              onChanged: (value) => setState(() => _expanded = value),
-            ),
-          ],
+            ],
+          ),
         ),
-        if (_expanded && cameras.isEmpty) ...[
+        if (cameras.isEmpty) ...[
           const SizedBox(height: 8),
           Text(
             'V bližini ni kamer.',
             style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
           ),
         ],
-        if (_expanded)
-          for (final camera in cameras) ...[
-            const SizedBox(height: 10),
-            EventCameraCard(camera: camera),
-          ],
+        for (final camera in shown) ...[
+          const SizedBox(height: 10),
+          EventCameraCard(camera: camera),
+        ],
+        if (canToggle) ...[
+          const SizedBox(height: 4),
+          _DisclosureRow(
+            label: _showAll
+                ? 'Prikaži manj'
+                : 'Prikaži vse (${cameras.length})',
+            expanded: _showAll,
+            onTap: () => setState(() => _showAll = !_showAll),
+          ),
+        ],
       ],
     );
   }
@@ -567,6 +577,60 @@ class EventCameraCard extends StatelessWidget {
   }
 }
 
+/// A full-width "show more / less" row with a chevron (44pt tall).
+class _DisclosureRow extends StatelessWidget {
+  final String label;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  const _DisclosureRow({
+    required this.label,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      expanded: expanded,
+      // Own Material so the ripple paints above the sheet's background.
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    color: cs.primary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Pill extends StatelessWidget {
   final String text;
   final Color color;
@@ -650,8 +714,9 @@ class _StatGrid extends StatelessWidget {
     );
   }
 
-  static String _distance(int metres) =>
-      metres >= 1000 ? '${(metres / 1000).toStringAsFixed(1)} km' : '$metres m';
+  static String _distance(int metres) => metres >= 1000
+      ? '${WeatherFormat.decimal(metres / 1000)} km'
+      : '$metres m';
 
   static String _duration(int seconds) {
     final m = (seconds / 60).round();

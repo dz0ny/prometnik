@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:promet/models/drsi_station.dart';
 import 'package:promet/services/drsi_service.dart';
 import 'package:promet/widgets/drsi_sheet.dart';
+import 'package:promet/widgets/event_sheet.dart' show eventRoadLabel;
+import 'package:promet/widgets/weather_details.dart' show WeatherFormat;
 
 void main() {
   final fixture = File('test/fixtures/drsi_current.json').readAsStringSync();
@@ -122,5 +124,53 @@ void main() {
     expect(find.text('Kranj - most'), findsOneWidget);
     expect(find.text('Poledica'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sheet fits at 2x text scale', (tester) async {
+    // Tall window so the whole (lazily built) sheet body is on screen.
+    tester.view.physicalSize = const Size(400, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final station = parseDrsiTable(fixture).first;
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDrsiSheet(context, station),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Kranj - most'), findsOneWidget);
+    expect(find.text('Vlažnost'), findsOneWidget);
+    expect(find.text('-0,4 °C'), findsWidgets); // decimal comma
+    expect(tester.takeException(), isNull);
+  });
+
+  test('WeatherFormat uses Slovenian decimals and compass', () {
+    expect(WeatherFormat.temp(-0.04), '0,0 °C');
+    expect(WeatherFormat.temp(-1.25), '-1,3 °C');
+    expect(WeatherFormat.windDirection('ENE'), 'VSV');
+    expect(WeatherFormat.windDirection('S'), 'J');
+    expect(WeatherFormat.windDirection('N'), 'S');
+    expect(WeatherFormat.bearing('N'), 0);
+  });
+
+  test('eventRoadLabel hides internal ids', () {
+    expect(eventRoadLabel('LZ-212840'), isNull);
+    expect(eventRoadLabel('A1-E57'), 'A1');
+    expect(eventRoadLabel('R3-651'), 'R3-651');
+    expect(eventRoadLabel('Celovška cesta'), 'Celovška cesta');
   });
 }

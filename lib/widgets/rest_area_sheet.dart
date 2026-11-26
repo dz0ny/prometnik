@@ -71,36 +71,42 @@ class _RestAreaSheet extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final color = restAreaColor(area);
 
-    return AppSheet(
-      children: [
-        Row(
-          children: [
-            Icon(Icons.local_parking, color: cs.primary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                area.title.isEmpty ? 'Počivališče' : area.title,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Navigacija',
-              icon: const Icon(Icons.directions),
-              onPressed: () => _openDirections(context),
-            ),
-          ],
+    final hours = _normaliseHours(area.workingHours);
+    final capacity = <Widget>[
+      if (area.carSpaces > 0)
+        _capChip(
+          cs,
+          Icons.directions_car,
+          '${area.carSpaces} ${_spaces(area.carSpaces)} za avte',
         ),
+      if (area.truckSpaces > 0)
+        _capChip(
+          cs,
+          Icons.local_shipping,
+          '${area.truckSpaces} ${_spaces(area.truckSpaces)} za tovornjake',
+        ),
+      if (hours.isNotEmpty) _capChip(cs, Icons.schedule, hours),
+    ];
+
+    return AppSheet(
+      title: area.title.isEmpty ? 'Počivališče' : area.title,
+      titleMaxLines: 2,
+      leading: Icon(Icons.local_parking, color: cs.primary),
+      actions: [
+        IconButton(
+          tooltip: 'Navigacija',
+          icon: const Icon(Icons.directions),
+          onPressed: () => _openDirections(context),
+        ),
+      ],
+      children: [
         if (area.locationDescription.isNotEmpty) ...[
-          const SizedBox(height: 6),
           Text(
             area.locationDescription,
             style: TextStyle(color: cs.onSurfaceVariant, height: 1.3),
           ),
+          const SizedBox(height: 16),
         ],
-        const SizedBox(height: 16),
         // Live availability.
         if (area.hasLiveAvailability) ...[
           Container(
@@ -138,20 +144,14 @@ class _RestAreaSheet extends StatelessWidget {
           ),
           const SizedBox(height: 12),
         ],
-        // Static capacity.
-        // Wrap: long working hours or large text would overflow a Row.
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _capChip(cs, Icons.directions_car, '${area.carSpaces} avto'),
-            _capChip(cs, Icons.local_shipping, '${area.truckSpaces} tovornih'),
-            if (area.workingHours.isNotEmpty)
-              _capChip(cs, Icons.schedule, area.workingHours),
-          ],
-        ),
+        // Static capacity; counts the feed reports as 0 mean "no data" and
+        // are hidden. Wrap: long working hours or large text would overflow
+        // a Row.
+        if (capacity.isNotEmpty)
+          Wrap(spacing: 8, runSpacing: 8, children: capacity),
         if (area.amenities.isNotEmpty) ...[
-          const SizedBox(height: 16),
+          if (capacity.isNotEmpty || area.hasLiveAvailability)
+            const SizedBox(height: 16),
           Text(
             'PONUDBA',
             style: TextStyle(
@@ -162,22 +162,50 @@ class _RestAreaSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
+          // Plain icon + label pairs: informational, not tappable chips.
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 16,
+            runSpacing: 10,
             children: [
               for (final a in _amenityIcons.entries)
                 if (area.amenities.contains(a.key))
-                  Chip(
-                    avatar: Icon(a.value.$1, size: 18, color: cs.primary),
-                    label: Text(a.value.$2),
-                    visualDensity: VisualDensity.compact,
+                  MergeSemantics(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(a.value.$1, size: 18, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 6),
+                        Text(a.value.$2, style: const TextStyle(fontSize: 14)),
+                      ],
+                    ),
                   ),
             ],
           ),
         ],
       ],
     );
+  }
+
+  /// Slovenian dual/plural of "mesto" for [n].
+  static String _spaces(int n) {
+    final r = n % 100;
+    if (r == 1) return 'mesto';
+    if (r == 2) return 'mesti';
+    if (r == 3 || r == 4) return 'mesta';
+    return 'mest';
+  }
+
+  /// "0 - 24h" → "0–24 h": en dash without spaces between numbers and a
+  /// space before the hour unit.
+  static String _normaliseHours(String raw) {
+    var s = raw.trim();
+    if (s.isEmpty) return s;
+    s = s.replaceAllMapped(
+      RegExp(r'(\d)\s*[-–—]\s*(\d)'),
+      (m) => '${m[1]}–${m[2]}',
+    );
+    s = s.replaceAllMapped(RegExp(r'(\d)\s*h\b'), (m) => '${m[1]} h');
+    return s.replaceAll(RegExp(r'\s+'), ' ');
   }
 
   Widget _capChip(ColorScheme cs, IconData icon, String label) {
@@ -192,7 +220,7 @@ class _RestAreaSheet extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: cs.onSurfaceVariant),
           const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 13)),
+          Flexible(child: Text(label, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );

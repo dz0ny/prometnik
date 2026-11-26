@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'app_sheet.dart';
 
 /// A compact "Filtri" button with an active-count badge. Opens a filter sheet.
 class FilterButton extends StatelessWidget {
   final int activeCount;
   final VoidCallback onTap;
 
-  const FilterButton({super.key, required this.activeCount, required this.onTap});
+  const FilterButton({
+    super.key,
+    required this.activeCount,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +83,9 @@ Future<void> showFilterSheet({
     isScrollControlled: true,
     // Present above the shell so the sheet isn't covered by the bottom tab bar.
     useRootNavigator: true,
+    // Keep a tall sheet below the status bar (handle and close button were
+    // drawn behind the clock/battery).
+    useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (sheetContext) {
       return StatefulBuilder(
@@ -94,10 +102,7 @@ class _FilterSheetBody extends StatelessWidget {
   final String title;
   final Widget child;
 
-  const _FilterSheetBody({
-    required this.title,
-    required this.child,
-  });
+  const _FilterSheetBody({required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -107,22 +112,24 @@ class _FilterSheetBody extends StatelessWidget {
         color: cs.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      // The modal's useSafeArea handles the top inset; this pads the bottom
+      // (home indicator) only.
       child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 44,
+              margin: const EdgeInsets.only(top: 8, bottom: 2),
+              width: 40,
               height: 5,
               decoration: BoxDecoration(
-                color: cs.outline,
+                color: cs.outline.withValues(alpha: .6),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
+              padding: const EdgeInsets.fromLTRB(20, 0, 4, 0),
               child: Row(
                 children: [
                   Expanded(
@@ -134,10 +141,7 @@ class _FilterSheetBody extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
+                  const AppSheetCloseButton(),
                 ],
               ),
             ),

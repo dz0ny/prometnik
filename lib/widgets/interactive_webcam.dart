@@ -6,8 +6,53 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/weather_station.dart';
 import '../theme/app_theme.dart';
+import 'weather_details.dart' show WeatherFormat;
 import 'webcam_image.dart';
 import 'sheet_snack.dart';
+
+/// A small dark translucent icon button drawn over the webcam image, with a
+/// 44pt hit area around its 28pt visual.
+class _OverlayIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _OverlayIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 18, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// A webcam frame that:
 ///  - tap → opens a zoomable fullscreen viewer,
@@ -24,6 +69,9 @@ class InteractiveWebcam extends StatefulWidget {
   final String? overlayName;
   final double? overlayTemp;
 
+  /// Whether to show a visible refresh button next to the fullscreen one.
+  final bool showRefreshButton;
+
   const InteractiveWebcam({
     super.key,
     required this.station,
@@ -32,6 +80,7 @@ class InteractiveWebcam extends StatefulWidget {
     this.autoRefresh,
     this.overlayName,
     this.overlayTemp,
+    this.showRefreshButton = true,
   });
 
   @override
@@ -122,22 +171,27 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                     ),
                   ),
                 ),
-              // Fullscreen affordance.
+              // Refresh and fullscreen affordances (long-press still
+              // refreshes, tap anywhere still opens fullscreen).
               if (hasCamera)
                 Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.fullscreen,
-                      size: 18,
-                      color: Colors.white,
-                    ),
+                  top: 2,
+                  right: 2,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.showRefreshButton)
+                        _OverlayIconButton(
+                          icon: Icons.refresh,
+                          tooltip: 'Osveži sliko',
+                          onTap: _refresh,
+                        ),
+                      _OverlayIconButton(
+                        icon: Icons.fullscreen,
+                        tooltip: 'Celozaslonski prikaz',
+                        onTap: _openFullscreen,
+                      ),
+                    ],
                   ),
                 ),
               if (hasOverlay)
@@ -180,7 +234,7 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                             ],
                           ),
                           child: Text(
-                            '${widget.overlayTemp!.toStringAsFixed(1)} °C',
+                            WeatherFormat.temp(widget.overlayTemp),
                             style: TextStyle(
                               // Cold colours are dark violet/blue: pick a
                               // readable foreground from the background.
@@ -271,19 +325,35 @@ class _FullscreenWebcamState extends State<_FullscreenWebcam> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  AdaptiveButton.icon(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icons.close,
-                    style: AdaptiveButtonStyle.tinted,
-                    color: Colors.white24,
-                    iconColor: Colors.white,
+                  Tooltip(
+                    message: 'Zapri',
+                    excludeFromSemantics: true,
+                    child: Semantics(
+                      button: true,
+                      label: 'Zapri',
+                      child: AdaptiveButton.icon(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icons.close,
+                        style: AdaptiveButtonStyle.tinted,
+                        color: Colors.white24,
+                        iconColor: Colors.white,
+                      ),
+                    ),
                   ),
-                  AdaptiveButton.icon(
-                    onPressed: _refresh,
-                    icon: Icons.refresh,
-                    style: AdaptiveButtonStyle.tinted,
-                    color: Colors.white24,
-                    iconColor: Colors.white,
+                  Tooltip(
+                    message: 'Osveži sliko',
+                    excludeFromSemantics: true,
+                    child: Semantics(
+                      button: true,
+                      label: 'Osveži sliko',
+                      child: AdaptiveButton.icon(
+                        onPressed: _refresh,
+                        icon: Icons.refresh,
+                        style: AdaptiveButtonStyle.tinted,
+                        color: Colors.white24,
+                        iconColor: Colors.white,
+                      ),
+                    ),
                   ),
                 ],
               ),

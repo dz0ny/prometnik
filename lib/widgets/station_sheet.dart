@@ -15,8 +15,9 @@ void showStationSheet(BuildContext context, int stationId) {
 }
 
 /// Detail sheet shown when a weather/camera pin is tapped: station name and
-/// update time in the pinned header, the live webcam (tap = fullscreen,
-/// long-press = refresh) and the full weather reading below.
+/// update time in the pinned header, the live webcam (tap or the fullscreen
+/// button = fullscreen; the refresh button or a long-press = refresh) and the
+/// full weather reading below.
 class StationSheet extends StatelessWidget {
   final int stationId;
 
@@ -40,11 +41,15 @@ class StationSheet extends StatelessWidget {
       );
     }
     final cs = Theme.of(context).colorScheme;
+    final updated = station.weather?.timestamp;
 
     return AppSheet(
       title: station.name.isEmpty ? 'Postaja' : station.name,
-      subtitle:
-          'Posodobljeno ${WeatherFormat.timestamp(station.weather?.timestamp)}',
+      // Camera-only stations have no reading time: no subtitle at all rather
+      // than "ni podatka".
+      subtitle: updated == null
+          ? null
+          : 'Posodobljeno: ${WeatherFormat.timestamp(updated)}',
       leading: Icon(
         station.hasWeather ? Icons.thermostat : Icons.videocam,
         color: cs.primary,
@@ -55,15 +60,6 @@ class StationSheet extends StatelessWidget {
             station: station,
             autoRefresh: const Duration(seconds: 60),
             overlayTemp: station.temperatureC,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Pritisni za celozaslon · dolg pritisk za osvežitev',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-              fontSize: 11,
-            ),
           ),
           const SizedBox(height: 16),
         ],

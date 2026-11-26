@@ -42,30 +42,17 @@ class _BurjaSheet extends StatelessWidget {
 
     return AppSheet(
       initialSize: 0.45,
+      title: station.title.isEmpty ? 'Burja' : station.title,
+      titleMaxLines: 2,
+      leading: Icon(Icons.air, color: color),
       children: [
-        Row(
-          children: [
-            Icon(Icons.air, color: color),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                station.title.isEmpty ? 'Burja' : station.title,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-        ),
         if (station.description.isNotEmpty) ...[
-          const SizedBox(height: 6),
           Text(
             station.description,
             style: TextStyle(color: cs.onSurfaceVariant, height: 1.3),
           ),
+          const SizedBox(height: 16),
         ],
-        const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(

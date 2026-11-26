@@ -1,9 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/drsi_station.dart';
 import '../theme/app_theme.dart';
 import 'app_sheet.dart';
+import 'weather_details.dart' show WeatherFormat;
 
 const _riskColors = <RoadRisk, Color>{
   RoadRisk.ok: Color(0xFF43A047),
@@ -23,7 +23,7 @@ const _riskAdvice = <RoadRisk, String>{
   RoadRisk.ok: 'Cestišče ni ledeno.',
   RoadRisk.caution: 'Mrzlo in vlažno cestišče, možna so spolzka mesta.',
   RoadRisk.slippery:
-      'Mokro cestišče je pri temperaturi zmrzišča ali pod njo. Vozite previdno.',
+      'Mokro cestišče je pri temperaturi zmrzišča ali pod njo. Vozi previdno.',
   RoadRisk.ice: 'Na cestišču je led. Skrajna previdnost!',
 };
 
@@ -35,8 +35,7 @@ String _wholeDegrees(double t) {
   return r == 0 ? '0' : '$r';
 }
 
-String _t(double? v, {int digits = 1}) =>
-    v == null ? '–' : '${v.toStringAsFixed(digits)} °C';
+String _t(double? v) => WeatherFormat.temp(v);
 
 void showDrsiSheet(BuildContext context, DrsiStation station) {
   showAppSheet<void>(context, builder: (_) => _DrsiSheet(station: station));
@@ -123,7 +122,7 @@ class _DrsiSheet extends StatelessWidget {
       title: station.name.isEmpty ? 'Cestna postaja' : station.name,
       subtitle: [
         'Cestna postaja DRSI',
-        if (at != null) DateFormat('d. M. yyyy, HH:mm').format(at),
+        if (at != null) WeatherFormat.timestamp(at),
       ].join(' · '),
       leading: Icon(Icons.add_road, color: color),
       children: [
@@ -174,50 +173,59 @@ class _DrsiSheet extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 2.2,
-          children: [
-            _metric(cs, Icons.add_road, 'Cesta', _t(station.roadTemp)),
-            _metric(cs, Icons.thermostat, 'Zrak', _t(station.airTemp)),
-            _metric(cs, Icons.ac_unit, 'Zmrzišče', _t(station.freezePoint)),
-            _metric(cs, Icons.water_drop, 'Rosišče', _t(station.dewPoint)),
-            _metric(
-              cs,
-              Icons.opacity,
-              'Vlaga',
-              station.humidity == null ? '–' : '${station.humidity!.round()} %',
-            ),
-            _metric(
-              cs,
-              Icons.air,
-              'Veter',
-              station.windKmh == null
-                  ? '–'
-                  : '${station.windKmh!.round()} km/h'
-                        '${station.gustKmh == null ? '' : ' (${station.gustKmh!.round()})'}',
-            ),
-            if (station.waterFilmMm != null)
+        // Two columns of tiles that grow with their content (a fixed grid
+        // aspect ratio clipped the values at large text sizes).
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = 8.0;
+            final tileWidth = (constraints.maxWidth - gap) / 2;
+            final tiles = <Widget>[
+              _metric(cs, Icons.add_road, 'Cesta', _t(station.roadTemp)),
+              _metric(cs, Icons.thermostat, 'Zrak', _t(station.airTemp)),
+              _metric(cs, Icons.ac_unit, 'Zmrzišče', _t(station.freezePoint)),
+              _metric(cs, Icons.water_drop, 'Rosišče', _t(station.dewPoint)),
               _metric(
                 cs,
-                Icons.waves,
-                'Vodni film',
-                '${station.waterFilmMm!.toStringAsFixed(2)} mm',
+                Icons.opacity,
+                'Vlažnost',
+                station.humidity == null
+                    ? '–'
+                    : '${station.humidity!.round()} %',
               ),
-            if (station.salinity != null)
               _metric(
                 cs,
-                Icons.grain,
-                'Slanost',
-                '${station.salinity!.toStringAsFixed(0)} '
-                        '${station.salinityUnit}'
-                    .trim(),
+                Icons.air,
+                'Veter',
+                station.windKmh == null
+                    ? '–'
+                    : '${station.windKmh!.round()} km/h',
+                detail: station.gustKmh == null
+                    ? null
+                    : 'sunki ${station.gustKmh!.round()} km/h',
               ),
-          ],
+              if (station.waterFilmMm != null)
+                _metric(
+                  cs,
+                  Icons.waves,
+                  'Vodni film',
+                  '${WeatherFormat.decimal(station.waterFilmMm!, 2)} mm',
+                ),
+              if (station.salinity != null)
+                _metric(
+                  cs,
+                  Icons.grain,
+                  'Slanost',
+                  '${station.salinity!.round()} ${station.salinityUnit}'.trim(),
+                ),
+            ];
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (final t in tiles) SizedBox(width: tileWidth, child: t),
+              ],
+            );
+          },
         ),
         if (camUrl.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -250,7 +258,13 @@ class _DrsiSheet extends StatelessWidget {
     );
   }
 
-  Widget _metric(ColorScheme cs, IconData icon, String label, String value) {
+  Widget _metric(
+    ColorScheme cs,
+    IconData icon,
+    String label,
+    String value, {
+    String? detail,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -259,7 +273,7 @@ class _DrsiSheet extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
@@ -277,10 +291,13 @@ class _DrsiSheet extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
+          if (detail != null)
+            Text(
+              detail,
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+            ),
         ],
       ),
     );

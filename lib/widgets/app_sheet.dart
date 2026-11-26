@@ -28,6 +28,12 @@ class AppSheet extends StatelessWidget {
   final String? title;
   final String? subtitle;
   final Widget? leading;
+
+  /// Extra header buttons shown before the close button (e.g. navigation).
+  final List<Widget> actions;
+
+  /// How many lines the header title may wrap to before it is ellipsized.
+  final int titleMaxLines;
   final List<Widget> children;
   final double initialSize;
   final double minSize;
@@ -39,6 +45,8 @@ class AppSheet extends StatelessWidget {
     this.title,
     this.subtitle,
     this.leading,
+    this.actions = const [],
+    this.titleMaxLines = 1,
     required this.children,
     this.initialSize = 0.62,
     this.minSize = 0.25,
@@ -46,10 +54,32 @@ class AppSheet extends StatelessWidget {
     this.padding = const EdgeInsets.fromLTRB(16, 4, 16, 16),
   });
 
+  /// Header height that fits the handle, the (scaled) title and subtitle and
+  /// the 44pt close button. Never smaller than the original fixed heights.
+  double _headerHeight(BuildContext context) {
+    // Handle (8 + 5) plus the row's vertical padding (2 + 6).
+    const chrome = 21.0;
+    // Room for the 44pt close button even without a title.
+    if (title == null) return chrome + _closeHitSize;
+    final scaler = MediaQuery.textScalerOf(context);
+    // Generous line-height factor: plain TextStyles use the font's own
+    // metrics, which differ per platform font.
+    const lineHeight = 1.35;
+    var text = scaler.scale(_titleFontSize) * lineHeight * titleMaxLines;
+    if (subtitle != null) text += scaler.scale(_subtitleFontSize) * lineHeight;
+    // Material IconButtons in [actions] are 48pt tall.
+    final buttons = actions.isEmpty ? _closeHitSize : 48.0;
+    final content = text > buttons ? text : buttons;
+    final floor = subtitle == null ? 64.0 : 80.0;
+    final h = (chrome + content).ceilToDouble();
+    return h > floor ? h : floor;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final headerHeight = _headerHeight(context);
     return DraggableScrollableSheet(
       initialChildSize: initialSize,
       minChildSize: minSize,
@@ -76,6 +106,9 @@ class AppSheet extends StatelessWidget {
                     title: title,
                     subtitle: subtitle,
                     leading: leading,
+                    actions: actions,
+                    titleMaxLines: titleMaxLines,
+                    height: headerHeight,
                     color: cs.surface,
                   ),
                 ),
@@ -93,28 +126,33 @@ class AppSheet extends StatelessWidget {
   }
 }
 
+const _titleFontSize = 20.0;
+const _subtitleFontSize = 13.0;
+const _closeHitSize = 44.0;
+
 class _SheetHeader extends SliverPersistentHeaderDelegate {
   final String? title;
   final String? subtitle;
   final Widget? leading;
+  final List<Widget> actions;
+  final int titleMaxLines;
+  final double height;
   final Color color;
 
   _SheetHeader({
     required this.title,
     required this.subtitle,
     required this.leading,
+    required this.actions,
+    required this.titleMaxLines,
+    required this.height,
     required this.color,
   });
 
-  double get _height {
-    if (title == null) return 48;
-    return subtitle == null ? 64 : 80;
-  }
-
   @override
-  double get minExtent => _height;
+  double get minExtent => height;
   @override
-  double get maxExtent => _height;
+  double get maxExtent => height;
 
   @override
   Widget build(
@@ -146,7 +184,7 @@ class _SheetHeader extends SliverPersistentHeaderDelegate {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 2, 8, 6),
+              padding: const EdgeInsets.fromLTRB(16, 2, 4, 6),
               child: Row(
                 children: [
                   if (leading != null) ...[leading!, const SizedBox(width: 10)],
@@ -159,12 +197,13 @@ class _SheetHeader extends SliverPersistentHeaderDelegate {
                             children: [
                               Text(
                                 title!,
-                                maxLines: 1,
-                                softWrap: false,
+                                maxLines: titleMaxLines,
+                                softWrap: titleMaxLines > 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontSize: 20,
+                                  fontSize: _titleFontSize,
                                   fontWeight: FontWeight.w800,
+                                  height: 1.15,
                                 ),
                               ),
                               if (subtitle != null)
@@ -175,13 +214,14 @@ class _SheetHeader extends SliverPersistentHeaderDelegate {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     color: cs.onSurfaceVariant,
-                                    fontSize: 13,
+                                    fontSize: _subtitleFontSize,
                                   ),
                                 ),
                             ],
                           ),
                   ),
-                  const _CloseButton(),
+                  ...actions,
+                  const AppSheetCloseButton(),
                 ],
               ),
             ),
@@ -196,28 +236,54 @@ class _SheetHeader extends SliverPersistentHeaderDelegate {
       old.title != title ||
       old.subtitle != subtitle ||
       old.leading != leading ||
+      old.actions != actions ||
+      old.titleMaxLines != titleMaxLines ||
+      old.height != height ||
       old.color != color;
 }
 
-class _CloseButton extends StatelessWidget {
-  const _CloseButton();
+/// The sheets' round close button: a 32pt circle with a 44pt hit area.
+/// Pops the current route unless [onPressed] is given.
+class AppSheetCloseButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+
+  const AppSheetCloseButton({super.key, this.onPressed});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Semantics(
-      button: true,
-      label: 'Zapri',
-      child: Material(
-        color: cs.surfaceContainerHighest,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: () => Navigator.of(context).maybePop(),
-          child: SizedBox(
-            width: 32,
-            height: 32,
-            child: Icon(Icons.close, size: 18, color: cs.onSurfaceVariant),
+    return Tooltip(
+      message: 'Zapri',
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        label: 'Zapri',
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkResponse(
+            onTap: onPressed ?? () => Navigator.of(context).maybePop(),
+            radius: _closeHitSize / 2,
+            child: SizedBox(
+              width: _closeHitSize,
+              height: _closeHitSize,
+              child: Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    shape: BoxShape.circle,
+                  ),
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),

@@ -85,62 +85,50 @@ class _CameraSheetState extends State<CameraSheet> {
     final cam = widget.camera;
 
     return AppSheet(
+      title: cam.title.isEmpty ? 'Kamera' : cam.title,
+      titleMaxLines: 2,
+      subtitle: cam.region.isEmpty ? null : cam.region,
+      leading: Icon(Icons.videocam, color: cs.primary),
       children: [
-        GestureDetector(
-          onTap: _openFullscreen,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: ColoredBox(
-                color: Colors.black,
-                child: CachedNetworkImage(
-                  imageUrl: cam.imageUrlWithBuster(_key),
-                  cacheKey: cam.imageUrlWithBuster(_key),
-                  useOldImageOnUrlChange: true,
-                  fit: BoxFit.contain,
-                  placeholder: (_, _) => const Center(
-                    child: SizedBox(
-                      width: 26,
-                      height: 26,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+        Semantics(
+          button: true,
+          label: 'Celozaslonski prikaz',
+          child: GestureDetector(
+            onTap: _openFullscreen,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: ColoredBox(
+                  color: Colors.black,
+                  child: CachedNetworkImage(
+                    imageUrl: cam.imageUrlWithBuster(_key),
+                    cacheKey: cam.imageUrlWithBuster(_key),
+                    useOldImageOnUrlChange: true,
+                    fit: BoxFit.contain,
+                    placeholder: (_, _) => const Center(
+                      child: SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     ),
-                  ),
-                  errorWidget: (_, _, _) => const Icon(
-                    Icons.broken_image_outlined,
-                    color: Colors.white54,
-                    size: 48,
+                    errorWidget: (_, _, _) => const Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white54,
+                      size: 48,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        Text(
-          cam.title.isEmpty ? 'Kamera' : cam.title,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-        ),
         if (cam.description.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
           Text(
             cam.description,
             style: TextStyle(color: cs.onSurfaceVariant, height: 1.35),
-          ),
-        ],
-        if (cam.region.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(Icons.place_outlined, size: 15, color: cs.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  cam.region,
-                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-                ),
-              ),
-            ],
           ),
         ],
         const SizedBox(height: 16),
@@ -199,12 +187,20 @@ class _FullscreenCamera extends StatelessWidget {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: AdaptiveButton.icon(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: Icons.close,
-                style: AdaptiveButtonStyle.tinted,
-                color: Colors.white24,
-                iconColor: Colors.white,
+              child: Tooltip(
+                message: 'Zapri',
+                excludeFromSemantics: true,
+                child: Semantics(
+                  button: true,
+                  label: 'Zapri',
+                  child: AdaptiveButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icons.close,
+                    style: AdaptiveButtonStyle.tinted,
+                    color: Colors.white24,
+                    iconColor: Colors.white,
+                  ),
+                ),
               ),
             ),
           ),

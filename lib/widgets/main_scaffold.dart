@@ -24,6 +24,7 @@ class MainScaffold extends StatefulWidget {
 
 class _MainScaffoldState extends State<MainScaffold> {
   int _tabTapCount = 0;
+  DateTime? _lastTabTap;
   NavigationNotifier? _navNotifier;
 
   @override
@@ -64,9 +65,15 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   void _handleTabTap(int index) {
-    // 5 consecutive taps on the active tab opens the about screen.
+    // Easter egg: 5 quick taps on the active tab open the about screen (it is
+    // also listed in the map's filter sheet as "O aplikaciji").
+    final now = DateTime.now();
+    final quick =
+        _lastTabTap != null &&
+        now.difference(_lastTabTap!) < const Duration(seconds: 2);
+    _lastTabTap = now;
     if (index == widget.navigationShell.currentIndex) {
-      _tabTapCount++;
+      _tabTapCount = quick ? _tabTapCount + 1 : 1;
       if (_tabTapCount >= 5) {
         _tabTapCount = 0;
         rootNavigatorKey.currentState?.push(

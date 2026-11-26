@@ -8,12 +8,32 @@ import '../theme/app_theme.dart';
 class WeatherFormat {
   WeatherFormat._();
 
-  static String temp(double? c) =>
-      c == null ? '–' : '${c.toStringAsFixed(1)} °C';
+  /// [v] with [digits] decimals, a Slovenian decimal comma and no "-0,0"
+  /// for small negatives that round to zero.
+  static String decimal(double v, [int digits = 1]) {
+    var s = v.toStringAsFixed(digits);
+    if (double.parse(s) == 0) s = 0.0.toStringAsFixed(digits);
+    return s.replaceAll('.', ',');
+  }
+
+  static String temp(double? c) => c == null ? '–' : '${decimal(c)} °C';
+
+  /// Slovenian compass abbreviation (S = sever, V = vzhod, J = jug,
+  /// Z = zahod) for the feed's English code, e.g. "ENE" → "VSV". Unknown
+  /// values are returned unchanged.
+  static String windDirection(String? dir) {
+    if (dir == null) return '';
+    final d = dir.trim().toUpperCase();
+    if (bearing(d) == null) return dir.trim();
+    const letters = {'N': 'S', 'E': 'V', 'S': 'J', 'W': 'Z'};
+    return d.split('').map((c) => letters[c] ?? c).join();
+  }
 
   static String wind(WeatherReading w) {
     if (w.windSpeedKmh == null) return '–';
-    final dir = (w.windDirection?.isNotEmpty ?? false) ? ' ${w.windDirection}' : '';
+    final dir = (w.windDirection?.isNotEmpty ?? false)
+        ? ' ${windDirection(w.windDirection)}'
+        : '';
     final gust = w.windGustKmh != null
         ? ' (sunki ${w.windGustKmh!.round()} km/h)'
         : '';
@@ -22,23 +42,25 @@ class WeatherFormat {
 
   static String humidity(int? p) => p == null ? '–' : '$p %';
   static String pressure(int? h) => h == null ? '–' : '$h hPa';
-  static String rain(double? mm) =>
-      mm == null ? '–' : '${mm.toStringAsFixed(1)} mm';
-  static String dew(double? c) =>
-      c == null ? '–' : '${c.toStringAsFixed(1)} °C';
+  static String rain(double? mm) => mm == null ? '–' : '${decimal(mm)} mm';
+  static String dew(double? c) => temp(c);
+
+  /// Degrees with one decimal and a comma, no unit: "-0,4°".
+  static String degrees(double? c) => c == null ? '–' : '${decimal(c)}°';
 
   static String minMax(WeatherReading w) {
     final lo = w.minOutdoorTemperatureC;
     final hi = w.maxOutdoorTemperatureC;
     if (lo == null && hi == null) return '–';
-    final loS = lo == null ? '–' : '${lo.toStringAsFixed(1)}°';
-    final hiS = hi == null ? '–' : '${hi.toStringAsFixed(1)}°';
-    return '$loS / $hiS';
+    return '${degrees(lo)} / ${degrees(hi)}';
   }
+
+  /// The app-wide date/time format, "26. 11. 2026, 20:56".
+  static final dateTimeFormat = DateFormat('d. M. yyyy, HH:mm');
 
   static String timestamp(DateTime? ts) {
     if (ts == null) return 'ni podatka';
-    return DateFormat('d. M. yyyy HH:mm').format(ts);
+    return dateTimeFormat.format(ts);
   }
 
   /// Compass bearing in degrees for a cardinal direction string (e.g. "NNE"),
@@ -46,10 +68,22 @@ class WeatherFormat {
   static double? bearing(String? dir) {
     if (dir == null) return null;
     const map = {
-      'N': 0.0, 'NNE': 22.5, 'NE': 45.0, 'ENE': 67.5,
-      'E': 90.0, 'ESE': 112.5, 'SE': 135.0, 'SSE': 157.5,
-      'S': 180.0, 'SSW': 202.5, 'SW': 225.0, 'WSW': 247.5,
-      'W': 270.0, 'WNW': 292.5, 'NW': 315.0, 'NNW': 337.5,
+      'N': 0.0,
+      'NNE': 22.5,
+      'NE': 45.0,
+      'ENE': 67.5,
+      'E': 90.0,
+      'ESE': 112.5,
+      'SE': 135.0,
+      'SSE': 157.5,
+      'S': 180.0,
+      'SSW': 202.5,
+      'SW': 225.0,
+      'WSW': 247.5,
+      'W': 270.0,
+      'WNW': 292.5,
+      'NW': 315.0,
+      'NNW': 337.5,
     };
     return map[dir.trim().toUpperCase()];
   }
@@ -123,7 +157,7 @@ class _TemperatureHero extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final t = weather.outdoorTemperatureC;
     final color = AppTheme.temperatureColor(t);
-    final whole = t == null ? '–' : t.toStringAsFixed(1);
+    final whole = t == null ? '–' : WeatherFormat.decimal(t);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
@@ -187,17 +221,13 @@ class _TemperatureHero extends StatelessWidget {
             children: [
               _MiniStat(
                 icon: Icons.arrow_upward,
-                value: weather.maxOutdoorTemperatureC == null
-                    ? '–'
-                    : '${weather.maxOutdoorTemperatureC!.toStringAsFixed(1)}°',
+                value: WeatherFormat.degrees(weather.maxOutdoorTemperatureC),
                 tint: const Color(0xFFFB8C00),
               ),
               const SizedBox(height: 8),
               _MiniStat(
                 icon: Icons.arrow_downward,
-                value: weather.minOutdoorTemperatureC == null
-                    ? '–'
-                    : '${weather.minOutdoorTemperatureC!.toStringAsFixed(1)}°',
+                value: WeatherFormat.degrees(weather.minOutdoorTemperatureC),
                 tint: const Color(0xFF5DA9E9),
               ),
             ],
@@ -213,7 +243,11 @@ class _MiniStat extends StatelessWidget {
   final String value;
   final Color tint;
 
-  const _MiniStat({required this.icon, required this.value, required this.tint});
+  const _MiniStat({
+    required this.icon,
+    required this.value,
+    required this.tint,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -289,7 +323,7 @@ class _WindTile extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          weather.windDirection!,
+                          WeatherFormat.windDirection(weather.windDirection),
                           style: TextStyle(
                             color: cs.primary,
                             fontWeight: FontWeight.w700,
@@ -388,9 +422,12 @@ class _StatTile extends StatelessWidget {
             children: [
               Icon(icon, size: 17, color: cs.primary),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                ),
               ),
             ],
           ),
@@ -406,7 +443,7 @@ class _StatTile extends StatelessWidget {
 }
 
 BoxDecoration _tileDecoration(ColorScheme cs) => BoxDecoration(
-      color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: cs.outline.withValues(alpha: 0.25)),
-    );
+  color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+  borderRadius: BorderRadius.circular(18),
+  border: Border.all(color: cs.outline.withValues(alpha: 0.25)),
+);

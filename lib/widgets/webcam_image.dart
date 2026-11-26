@@ -45,27 +45,54 @@ class WebcamImage extends StatelessWidget {
 
   Widget _placeholder(BuildContext context, IconData? icon, String? label) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      height: height,
-      width: double.infinity,
-      color: cs.surfaceContainerHighest,
-      alignment: Alignment.center,
-      child: icon == null
-          ? const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: cs.onSurfaceVariant, size: 32),
-                if (label != null) ...[
-                  const SizedBox(height: 8),
-                  Text(label, style: TextStyle(color: cs.onSurfaceVariant)),
-                ],
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Small thumbnails (e.g. 64×48 list rows) only fit an icon.
+        final w = constraints.maxWidth;
+        final h = height ?? constraints.maxHeight;
+        final compact = w < _compactWidth || h < _compactHeight;
+        final Widget child;
+        if (icon == null) {
+          final s = compact ? 16.0 : 28.0;
+          child = SizedBox(
+            width: s,
+            height: s,
+            child: const CircularProgressIndicator(strokeWidth: 2),
+          );
+        } else if (compact || label == null) {
+          child = Icon(
+            icon,
+            color: cs.onSurfaceVariant,
+            size: compact ? 20 : 32,
+            semanticLabel: label,
+          );
+        } else {
+          child = Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: cs.onSurfaceVariant, size: 32),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+            ],
+          );
+        }
+        return Container(
+          height: height,
+          width: double.infinity,
+          color: cs.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: child,
+        );
+      },
     );
   }
+
+  static const _compactWidth = 140.0;
+  static const _compactHeight = 100.0;
 }

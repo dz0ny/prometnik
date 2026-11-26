@@ -48,7 +48,7 @@ class EventVisuals {
   static String label(EventSeverity s) => switch (s) {
     EventSeverity.closed => 'Zaprto',
     EventSeverity.jam => 'Zastoj',
-    EventSeverity.roadworks => 'Dela',
+    EventSeverity.roadworks => 'Dela na cesti',
     EventSeverity.other => 'Opozorilo',
   };
 
