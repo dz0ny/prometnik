@@ -86,6 +86,36 @@ async function listCameras() {
   return camerasFromFeeds(bodies);
 }
 
+/** R2 key of [camUrl]'s snapshot for the UTC hour of [date]. */
+export async function snapshotKey(camUrl, date) {
+  return `h/${await cameraId(camUrl)}/${hourStamp(date)}.jpg`;
+}
+
+/**
+ * Store [body] as this hour's snapshot unless the hour already has one —
+ * the single write path, so each camera has at most one frame per hour.
+ * Returns true when it wrote.
+ */
+export async function storeHourly(env, camUrl, body, type, now = new Date()) {
+  const key = await snapshotKey(camUrl, now);
+  if (await env.SNAPS.head(key)) return false;
+  await env.SNAPS.put(key, body, {
+    httpMetadata: { contentType: type || 'image/jpeg' },
+    customMetadata: { camera: camUrl },
+  });
+  return true;
+}
+
+/** The newest snapshot of [camUrl] from this or the previous hour. */
+export async function latestSnapshot(env, camUrl, now = new Date()) {
+  for (const back of [0, 1]) {
+    const key = await snapshotKey(camUrl, new Date(now.getTime() - back * 3600e3));
+    const obj = await env.SNAPS.get(key);
+    if (obj) return obj;
+  }
+  return null;
+}
+
 /** Cron handler: snapshot this run's slice of cameras into R2. */
 export async function captureSlice(env, scheduledTime, fetchFrame) {
   const now = new Date(scheduledTime);
@@ -107,11 +137,14 @@ export async function captureSlice(env, scheduledTime, fetchFrame) {
       try {
         if (await env.SNAPS.head(job.key)) continue; // already have this hour
         const res = await fetchFrame(new URL(job.cam));
-        await env.SNAPS.put(job.key, await res.arrayBuffer(), {
-          httpMetadata: { contentType: res.headers.get('Content-Type') || 'image/jpeg' },
-          customMetadata: { camera: job.cam },
-        });
-        stored++;
+        const wrote = await storeHourly(
+          env,
+          job.cam,
+          await res.arrayBuffer(),
+          res.headers.get('Content-Type'),
+          now,
+        );
+        if (wrote) stored++;
       } catch {
         failed++;
       }

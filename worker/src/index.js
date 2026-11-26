@@ -13,7 +13,13 @@
 // Plain-http cameras (www.drsc.si) are served over https, and CORS is open so
 // the web build can load them too.
 
-import { captureSlice, handleHistory, handleSnap } from './snapshots.js';
+import {
+  captureSlice,
+  handleHistory,
+  handleSnap,
+  latestSnapshot,
+  storeHourly,
+} from './snapshots.js';
 
 export const ALLOWED_HOSTS = new Set([
   'kamere.dars.si',
@@ -23,7 +29,7 @@ export const ALLOWED_HOSTS = new Set([
 ]);
 
 const FRESH_SECONDS = 60;
-const STALE_SECONDS = 3600;
+const STALE_SECONDS = 86400; // any frame from the last day beats a slow camera
 const ORIGIN_TIMEOUT_MS = 8000;
 
 /** Validates the `u` parameter; returns the camera URL or null. */
@@ -101,37 +107,77 @@ export default {
     const cam = cameraUrl(url.searchParams.get('u'));
     if (!cam) return new Response('Unknown camera', { status: 400 });
 
-    const cache = caches.default;
-    const keys = cacheKeys(cam);
-
-    const fresh = await cache.match(keys.fresh);
-    if (fresh) return withHeaders(fresh, FRESH_SECONDS, 'HIT');
-
-    try {
-      const origin = await fetchFrame(cam);
-      const body = await origin.arrayBuffer();
-      const type = origin.headers.get('Content-Type');
-      const store = (maxAge) =>
-        new Response(body, {
-          headers: {
-            'Content-Type': type,
-            'Cache-Control': `public, max-age=${maxAge}`,
-          },
-        });
-      ctx.waitUntil(
-        Promise.all([
-          cache.put(keys.fresh, store(FRESH_SECONDS)),
-          cache.put(keys.stale, store(STALE_SECONDS)),
-        ]),
-      );
-      return withHeaders(store(FRESH_SECONDS), FRESH_SECONDS, 'MISS');
-    } catch (err) {
-      const stale = await cache.match(keys.stale);
-      if (stale) return withHeaders(stale, 15, 'STALE');
-      return new Response(`Camera unavailable: ${err.message}`, {
-        status: 502,
-        headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
-      });
-    }
+    return serveCamera(cam, env, ctx);
   },
 };
+
+/**
+ * Serve a camera frame, cache first:
+ *  1. fresh edge copy (< FRESH_SECONDS)       → HIT
+ *  2. older edge copy (< STALE_SECONDS)       → STALE, refresh in background
+ *  3. this/last hour's R2 snapshot            → SNAPSHOT, refresh in background
+ *  4. nothing cached anywhere                 → fetch the camera (MISS)
+ * Only case 4 waits on the (slow) camera; a camera that's down keeps serving
+ * its last good frame.
+ */
+async function serveCamera(cam, env, ctx) {
+  const cache = caches.default;
+  const keys = cacheKeys(cam);
+
+  const fresh = await cache.match(keys.fresh);
+  if (fresh) return withHeaders(fresh, FRESH_SECONDS, 'HIT');
+
+  const refresh = () => refreshFrame(cam, env, keys);
+
+  const stale = await cache.match(keys.stale);
+  if (stale) {
+    ctx.waitUntil(refresh().catch(() => {}));
+    return withHeaders(stale, 15, 'STALE');
+  }
+
+  if (env.SNAPS) {
+    const snap = await latestSnapshot(env, cam.toString());
+    if (snap) {
+      ctx.waitUntil(refresh().catch(() => {}));
+      return withHeaders(
+        new Response(snap.body, {
+          headers: { 'Content-Type': snap.httpMetadata?.contentType || 'image/jpeg' },
+        }),
+        15,
+        'SNAPSHOT',
+      );
+    }
+  }
+
+  try {
+    const { body, type } = await refresh();
+    return withHeaders(
+      new Response(body, { headers: { 'Content-Type': type } }),
+      FRESH_SECONDS,
+      'MISS',
+    );
+  } catch (err) {
+    return new Response(`Camera unavailable: ${err.message}`, {
+      status: 502,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
+    });
+  }
+}
+
+/** Fetch the camera, update both edge copies and this hour's R2 snapshot. */
+async function refreshFrame(cam, env, keys) {
+  const origin = await fetchFrame(cam);
+  const body = await origin.arrayBuffer();
+  const type = origin.headers.get('Content-Type') || 'image/jpeg';
+  const store = (maxAge) =>
+    new Response(body, {
+      headers: { 'Content-Type': type, 'Cache-Control': `public, max-age=${maxAge}` },
+    });
+  const cache = caches.default;
+  await Promise.all([
+    cache.put(keys.fresh, store(FRESH_SECONDS)),
+    cache.put(keys.stale, store(STALE_SECONDS)),
+    env.SNAPS ? storeHourly(env, cam.toString(), body, type) : null,
+  ]);
+  return { body, type };
+}

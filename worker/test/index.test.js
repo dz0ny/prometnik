@@ -46,3 +46,36 @@ test('feeds yield allowed, de-duplicated camera URLs', () => {
     'https://kamere.dars.si/b.jpg',
   ]);
 });
+
+import { storeHourly, latestSnapshot } from '../src/snapshots.js';
+
+function fakeR2() {
+  const objects = new Map();
+  let puts = 0;
+  return {
+    objects,
+    get puts() { return puts; },
+    async head(k) { return objects.has(k) ? { key: k } : null; },
+    async get(k) { return objects.get(k) ?? null; },
+    async put(k, body, opts) { puts++; objects.set(k, { body, ...opts }); },
+  };
+}
+
+test('only one snapshot per camera per hour, however often it is offered', async () => {
+  const SNAPS = fakeR2();
+  const env = { SNAPS };
+  const cam = 'https://kamere.dars.si/a.jpg';
+  const t = (h, m) => new Date(Date.UTC(2026, 10, 26, h, m));
+  assert.equal(await storeHourly(env, cam, 'one', 'image/jpeg', t(21, 1)), true);
+  assert.equal(await storeHourly(env, cam, 'two', 'image/jpeg', t(21, 30)), false);
+  assert.equal(await storeHourly(env, cam, 'three', 'image/jpeg', t(21, 59)), false);
+  assert.equal(await storeHourly(env, cam, 'next', 'image/jpeg', t(22, 0)), true);
+  assert.equal(SNAPS.puts, 2);
+  assert.equal(SNAPS.objects.size, 2);
+  // The 21:00 frame is the first one offered that hour.
+  assert.equal((await latestSnapshot(env, cam, t(21, 45))).body, 'one');
+  // At 22:10 the newest is 22:00; at 23:30 it falls back to 22:00 too.
+  assert.equal((await latestSnapshot(env, cam, t(22, 10))).body, 'next');
+  assert.equal((await latestSnapshot(env, cam, t(23, 30))).body, 'next');
+  assert.equal(await latestSnapshot(env, cam, new Date(t(23, 30).getTime() + 3600e3)), null);
+});
