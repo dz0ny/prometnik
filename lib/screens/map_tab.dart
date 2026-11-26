@@ -51,6 +51,10 @@ class MapTabState extends State<MapTab> {
 
   bool _mapReady = false;
 
+  /// Zoom from which weather pins also show a mini webcam frame.
+  static const double _thumbnailZoom = 11;
+  bool _showThumbnails = false;
+
   // Base map tiles: OpenStreetMap or Seznam (Mapy.cz), as in gozdar.
   BaseMap _baseMap = BaseMap.saved;
 
@@ -580,6 +584,14 @@ class MapTabState extends State<MapTab> {
                     flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                   ),
                   onMapReady: () => _mapReady = true,
+                  // Only rebuild when crossing the thumbnail threshold, not
+                  // on every pan/zoom frame.
+                  onPositionChanged: (camera, _) {
+                    final show = camera.zoom >= _thumbnailZoom;
+                    if (show != _showThumbnails) {
+                      setState(() => _showThumbnails = show);
+                    }
+                  },
                 ),
                 children: [
                   buildBaseTileLayer(context, base: _baseMap, isDark: isDark),
@@ -601,6 +613,7 @@ class MapTabState extends State<MapTab> {
                   _WeatherStationsLayer(
                     showWeather: _showWeather,
                     showCameras: _showCameras,
+                    showThumbnails: _showThumbnails,
                     onTap: _openStation,
                   ),
                   // DRSI road stations sit above the weather pins, which
@@ -1075,11 +1088,7 @@ class _RestAreasLayerState extends State<_RestAreasLayer> {
     final items = context.select<RestAreasProvider, List<RestArea>>(
       (p) => p.items,
     );
-    final groups = _memo(
-      items,
-      null,
-      (a, _) => MapTabState._restAreaGroups(a),
-    );
+    final groups = _memo(items, null, (a, _) => MapTabState._restAreaGroups(a));
     return MarkerLayer(
       markers: [
         for (final group in groups)
@@ -1125,11 +1134,13 @@ class _BurjaLayer extends StatelessWidget {
 class _WeatherStationsLayer extends StatelessWidget {
   final bool showWeather;
   final bool showCameras;
+  final bool showThumbnails;
   final void Function(WeatherStation) onTap;
 
   const _WeatherStationsLayer({
     required this.showWeather,
     required this.showCameras,
+    required this.showThumbnails,
     required this.onTap,
   });
 
@@ -1138,21 +1149,33 @@ class _WeatherStationsLayer extends StatelessWidget {
     final stations = context.select<WeatherProvider, List<WeatherStation>>(
       (p) => p.stations,
     );
+    // Frames refresh in 5-minute steps so rebuilds reuse the cached image.
+    final bucket = DateTime.now().millisecondsSinceEpoch ~/ 300000 * 300000;
     return MarkerLayer(
       markers: [
         for (final station in stations)
           if (station.hasWeather ? showWeather : showCameras)
-            Marker(
-              point: station.position,
-              width: station.hasWeather ? 60 : 34,
-              height: 44,
-              alignment: Alignment.topCenter,
-              child: TemperatureMarker(
-                station: station,
-                onTap: () => onTap(station),
-              ),
-            ),
+            _stationMarker(station, bucket),
       ],
+    );
+  }
+
+  Marker _stationMarker(WeatherStation station, int bucket) {
+    final thumb = showThumbnails && station.cameraLink.isNotEmpty
+        ? station.cameraUrlWithBuster(bucket)
+        : null;
+    return Marker(
+      point: station.position,
+      width: thumb != null
+          ? TemperatureMarker.thumbnailWidth
+          : (station.hasWeather ? 60 : 34),
+      height: 44 + (thumb != null ? TemperatureMarker.thumbnailHeight : 0),
+      alignment: Alignment.topCenter,
+      child: TemperatureMarker(
+        station: station,
+        thumbnailUrl: thumb,
+        onTap: () => onTap(station),
+      ),
     );
   }
 }
