@@ -196,12 +196,12 @@ class _ListTabState extends State<ListTab> {
                   Expanded(
                     child: PlatformInfo.isIOS
                         ? CupertinoSearchTextField(
-                            placeholder: 'Išči kamero…',
+                            placeholder: 'Išči postajo ali kamero…',
                             onChanged: (v) =>
                                 setState(() => _query = v.toLowerCase().trim()),
                           )
                         : AdaptiveTextField(
-                            placeholder: 'Išči kamero…',
+                            placeholder: 'Išči postajo ali kamero…',
                             prefixIcon: const Icon(Icons.search),
                             onChanged: (v) =>
                                 setState(() => _query = v.toLowerCase().trim()),
@@ -251,6 +251,8 @@ class _ListTabState extends State<ListTab> {
                     onRefresh: _onRefresh,
                     child: ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       padding: EdgeInsets.only(
                         top: 4,
                         bottom: 16 + AppTheme.bottomBarContentInset(context),
@@ -326,38 +328,29 @@ class _ListTabState extends State<ListTab> {
                 ),
           const SizedBox(height: 8),
           const FilterSectionLabel('Prikaz'),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  favCount > 0
-                      ? 'Samo priljubljene ($favCount)'
-                      : 'Samo priljubljene',
-                  style: const TextStyle(fontSize: 15),
-                ),
-              ),
-              Switch.adaptive(
-                value: _onlyFavorites,
-                onChanged: (v) => setSheet(() {
-                  setState(() => _onlyFavorites = v);
-                  _saveListFilters();
-                }),
-              ),
-            ],
+          // Whole row toggles and reads as one switch for screen readers.
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              favCount > 0
+                  ? 'Samo priljubljene ($favCount)'
+                  : 'Samo priljubljene',
+              style: const TextStyle(fontSize: 15),
+            ),
+            value: _onlyFavorites,
+            onChanged: (v) => setSheet(() {
+              setState(() => _onlyFavorites = v);
+              _saveListFilters();
+            }),
           ),
-          Row(
-            children: [
-              const Expanded(
-                child: Text('DARS kamere', style: TextStyle(fontSize: 15)),
-              ),
-              Switch.adaptive(
-                value: _showDarsCameras,
-                onChanged: (v) => setSheet(() {
-                  setState(() => _showDarsCameras = v);
-                  _saveListFilters();
-                }),
-              ),
-            ],
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('DARS kamere', style: TextStyle(fontSize: 15)),
+            value: _showDarsCameras,
+            onChanged: (v) => setSheet(() {
+              setState(() => _showDarsCameras = v);
+              _saveListFilters();
+            }),
           ),
         ],
       ),
@@ -563,7 +556,7 @@ class _StationRow extends StatelessWidget {
                     station.weather == null
                         ? 'Samo kamera'
                         : WeatherFormat.wind(station.weather!),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
@@ -572,7 +565,7 @@ class _StationRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             if (temp == null)
-              Icon(Icons.videocam, size: 20, color: cs.onSurfaceVariant)
+              const _KindIcon()
             else
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -591,17 +584,23 @@ class _StationRow extends StatelessWidget {
                   ),
                 ),
               ),
-            AdaptiveButton.icon(
-              icon: isFav ? Icons.star : Icons.star_border,
-              iconColor: isFav ? const Color(0xFFFFB74D) : cs.onSurfaceVariant,
-              style: AdaptiveButtonStyle.plain,
-              onPressed: () => favs.toggle(station.stationId),
+            Semantics(
+              button: true,
+              toggled: isFav,
+              label: isFav
+                  ? 'Odstrani iz priljubljenih'
+                  : 'Dodaj med priljubljene',
+              child: AdaptiveButton.icon(
+                icon: isFav ? Icons.star : Icons.star_border,
+                iconColor: isFav
+                    ? const Color(0xFFFFB74D)
+                    : cs.onSurfaceVariant,
+                style: AdaptiveButtonStyle.plain,
+                minSize: const Size(_kTrailingActionWidth, 44),
+                onPressed: () => favs.toggle(station.stationId),
+              ),
             ),
-            Icon(
-              Icons.chevron_right,
-              size: 20,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
+            const _Chevron(),
           ],
         ),
       ),
@@ -647,20 +646,30 @@ class _FavoriteHeroCard extends StatelessWidget {
                 ),
               ),
               Positioned(
-                top: 8,
-                right: 8,
-                child: GestureDetector(
-                  onTap: () => favs.toggle(station.stationId),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Colors.black45,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.star,
-                      color: Color(0xFFFFB74D),
-                      size: 20,
+                top: 2,
+                right: 2,
+                child: Semantics(
+                  button: true,
+                  label: 'Odstrani iz priljubljenih',
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => favs.toggle(station.stationId),
+                    // 48pt hit area around the 32pt visible badge.
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Colors.black45,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.star,
+                          color: Color(0xFFFFB74D),
+                          size: 20,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -784,10 +793,16 @@ class _CameraRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    camera.description.isNotEmpty
-                        ? camera.description
-                        : camera.region,
-                    maxLines: 1,
+                    // Prefixed so a DARS camera is distinguishable from a
+                    // weather station of the same name.
+                    [
+                      'Kamera DARS',
+                      if (camera.description.isNotEmpty)
+                        camera.description
+                      else if (camera.region.isNotEmpty)
+                        camera.region,
+                    ].join(' · '),
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
@@ -795,15 +810,46 @@ class _CameraRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Icon(Icons.photo_camera, size: 18, color: cs.onSurfaceVariant),
-            Icon(
-              Icons.chevron_right,
-              size: 20,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
+            const _KindIcon(),
+            // Same slot as the station row's star so chevrons line up.
+            const SizedBox(width: _kTrailingActionWidth),
+            const _Chevron(),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Width of the trailing action slot (the favourite star) in list rows; rows
+/// without an action leave it empty so their icons and chevrons line up.
+const double _kTrailingActionWidth = 44;
+
+/// Camera-only marker shown where a station row would show a temperature.
+class _KindIcon extends StatelessWidget {
+  const _KindIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(
+      Icons.videocam,
+      size: 20,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+  }
+}
+
+class _Chevron extends StatelessWidget {
+  const _Chevron();
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(
+      Icons.chevron_right,
+      size: 20,
+      color: Theme.of(
+        context,
+      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
     );
   }
 }

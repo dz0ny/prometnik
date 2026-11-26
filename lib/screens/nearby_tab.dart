@@ -165,74 +165,66 @@ class _NearbyTabState extends State<NearbyTab> {
             ),
           ),
           const FilterSectionLabel('Tipi dogodkov'),
+          // Whole row toggles and reads as one switch for screen readers.
           for (final s in _order)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(EventVisuals.icon(s), color: EventVisuals.color(s)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '${EventVisuals.label(s)} (${count(s)})',
-                      style: const TextStyle(fontSize: 15),
-                    ),
-                  ),
-                  Switch.adaptive(
-                    value: _active.contains(s),
-                    activeTrackColor: EventVisuals.color(s),
-                    onChanged: (v) => setSheet(() {
-                      setState(() {
-                        if (v) {
-                          _active.add(s);
-                        } else {
-                          _active.remove(s);
-                        }
-                      });
-                      Prefs.setStringList(
-                        'nearby.severities',
-                        _active.map((s) => s.name).toList(),
-                      );
-                    }),
-                  ),
-                ],
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              secondary: Icon(
+                EventVisuals.icon(s),
+                color: EventVisuals.color(s),
               ),
+              title: Text(
+                '${_typeLabel(s)} (${count(s)})',
+                style: const TextStyle(fontSize: 15),
+              ),
+              value: _active.contains(s),
+              activeTrackColor: EventVisuals.color(s),
+              onChanged: (v) => setSheet(() {
+                setState(() {
+                  if (v) {
+                    _active.add(s);
+                  } else {
+                    _active.remove(s);
+                  }
+                });
+                Prefs.setStringList(
+                  'nearby.severities',
+                  _active.map((s) => s.name).toList(),
+                );
+              }),
             ),
           if (causes.isNotEmpty) const FilterSectionLabel('Vzrok'),
           for (final c in causes)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${_capitalize(c)} (${causeCounts[c]})',
-                      style: const TextStyle(fontSize: 15),
-                    ),
-                  ),
-                  Switch.adaptive(
-                    value: !_excludedCauses.contains(c),
-                    onChanged: (v) => setSheet(() {
-                      setState(() {
-                        if (v) {
-                          _excludedCauses.remove(c);
-                        } else {
-                          _excludedCauses.add(c);
-                        }
-                      });
-                      Prefs.setStringList(
-                        'nearby.excludedCauses',
-                        _excludedCauses.toList(),
-                      );
-                    }),
-                  ),
-                ],
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                '${_capitalize(c)} (${causeCounts[c]})',
+                style: const TextStyle(fontSize: 15),
               ),
+              value: !_excludedCauses.contains(c),
+              onChanged: (v) => setSheet(() {
+                setState(() {
+                  if (v) {
+                    _excludedCauses.remove(c);
+                  } else {
+                    _excludedCauses.add(c);
+                  }
+                });
+                Prefs.setStringList(
+                  'nearby.excludedCauses',
+                  _excludedCauses.toList(),
+                );
+              }),
             ),
         ],
       ),
     );
   }
+
+  /// Event-type label for the filter. "Dela" is also a cause name, so the
+  /// roadworks type gets a longer label to tell the two lists apart.
+  static String _typeLabel(EventSeverity s) =>
+      s == EventSeverity.roadworks ? 'Dela na cesti' : EventVisuals.label(s);
 
   static String _capitalize(String s) =>
       s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
@@ -278,9 +270,18 @@ class _NearbyTabState extends State<NearbyTab> {
               ),
             ),
             Expanded(
-              child: Consumer<AlertsController>(
-                builder: (context, alerts, _) {
+              child: Consumer2<AlertsController, EventsProvider>(
+                builder: (context, alerts, eventsProvider, _) {
                   final cs = Theme.of(context).colorScheme;
+                  // Event lists come from EventsProvider; without data yet,
+                  // "no events" would be a lie, so show its state instead.
+                  final eventsLoading =
+                      eventsProvider.isLoading && !eventsProvider.hasData;
+                  final eventsFailed =
+                      !eventsLoading &&
+                      eventsProvider.error != null &&
+                      !eventsProvider.hasData;
+                  final eventsUnavailable = eventsLoading || eventsFailed;
                   final distanceLimitMeters = _distanceLimitMeters;
                   // Without a fix every distance is unknown; filtering by it
                   // would hide everything, so only filter once we have one.
@@ -321,134 +322,158 @@ class _NearbyTabState extends State<NearbyTab> {
                         });
                   final allEvents = alerts.events.where(_passes).toList();
 
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.only(
-                      top: 4,
-                      bottom: 16 + AppTheme.bottomBarContentInset(context),
-                    ),
-                    children: [
-                      // Watched roads.
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'SPREMLJANE CESTE',
-                                style: TextStyle(
-                                  color: cs.onSurfaceVariant,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.4,
-                                ),
-                              ),
-                            ),
-                            AdaptiveButton.child(
-                              onPressed: _openPicker,
-                              style: AdaptiveButtonStyle.plain,
-                              size: AdaptiveButtonSize.small,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.map, size: 16, color: cs.primary),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Izberi na karti',
-                                    style: TextStyle(color: cs.primary),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                  return RefreshIndicator(
+                    onRefresh: eventsProvider.refresh,
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: EdgeInsets.only(
+                        top: 4,
+                        bottom: 16 + AppTheme.bottomBarContentInset(context),
                       ),
-                      if (!alerts.hasWatched)
-                        _hint(
-                          cs,
-                          'Dodaj ceste (npr. A1) za opozorila o dogodkih na njih.',
-                        )
-                      else if (watched.isEmpty)
-                        _hint(
-                          cs,
-                          _query.isNotEmpty
-                              ? 'Ni zadetkov na spremljanih cestah.'
-                              : 'Na spremljanih cestah ni aktivnih dogodkov.',
-                        )
-                      else
-                        _eventCard(
-                          context,
-                          watched
-                              .map(
-                                (e) => _eventRow(
-                                  context,
-                                  e,
-                                  trailing: distanceById[e.id] == null
-                                      ? null
-                                      : _distance(distanceById[e.id]!),
+                      children: [
+                        // Watched roads.
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'SPREMLJANE CESTE',
+                                  style: TextStyle(
+                                    color: cs.onSurfaceVariant,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.4,
+                                  ),
                                 ),
-                              )
-                              .toList(),
-                        ),
-
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                        child: Text(
-                          alerts.locationEnabled ? 'V BLIŽINI' : 'VSI DOGODKI',
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
+                              ),
+                              AdaptiveButton.child(
+                                onPressed: _openPicker,
+                                style: AdaptiveButtonStyle.plain,
+                                size: AdaptiveButtonSize.small,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.map,
+                                      size: 16,
+                                      color: cs.primary,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Izberi na karti',
+                                      style: TextStyle(color: cs.primary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      // Non-blocking prompt to enable distance + alerts.
-                      if (!alerts.locationEnabled)
-                        _locationPrompt(context, alerts),
-                      if (alerts.locationEnabled && !hasFix)
-                        _hint(cs, 'Pridobivanje lokacije…')
-                      else if (alerts.locationEnabled)
-                        if (nearby.isEmpty)
+                        if (!alerts.hasWatched)
+                          _hint(
+                            cs,
+                            'Dodaj ceste (npr. A1) za opozorila o dogodkih na njih.',
+                          )
+                        else if (eventsUnavailable)
+                          // The status is shown once, in the section below.
+                          const SizedBox.shrink()
+                        else if (watched.isEmpty)
                           _hint(
                             cs,
                             _query.isNotEmpty
-                                ? 'Ni zadetkov v bližini.'
-                                : 'Ni dogodkov v bližini.',
+                                ? 'Ni zadetkov na spremljanih cestah.'
+                                : 'Na spremljanih cestah ni aktivnih dogodkov.',
                           )
                         else
                           _eventCard(
                             context,
-                            nearby
-                                .take(50)
+                            watched
                                 .map(
-                                  (n) => _eventRow(
+                                  (e) => _eventRow(
                                     context,
-                                    n.event,
-                                    trailing: _distance(n.distanceMeters),
+                                    e,
+                                    trailing: distanceById[e.id] == null
+                                        ? null
+                                        : _distance(distanceById[e.id]!),
                                   ),
                                 )
                                 .toList(),
-                          )
-                      else if (allEvents.isEmpty)
-                        _hint(
-                          cs,
-                          _query.isNotEmpty
-                              ? 'Ni zadetkov.'
-                              : 'Trenutno ni dogodkov.',
-                        )
-                      else
-                        _eventCard(
-                          context,
-                          // Each row holds a live mini-map; cap it like the
-                          // nearby list so 150+ events don't build 150 maps.
-                          allEvents
-                              .take(50)
-                              .map((e) => _eventRow(context, e))
-                              .toList(),
+                          ),
+
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                          child: Text(
+                            alerts.locationEnabled
+                                ? 'V BLIŽINI'
+                                : 'VSI DOGODKI',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
                         ),
-                    ],
+                        // Non-blocking prompt to enable distance + alerts.
+                        if (!alerts.locationEnabled ||
+                            alerts.locationProblemMessage != null)
+                          _locationPrompt(context, alerts),
+                        if (eventsLoading)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 32),
+                            child: Center(
+                              child: CircularProgressIndicator.adaptive(),
+                            ),
+                          )
+                        else if (eventsFailed)
+                          _eventsError(context, eventsProvider)
+                        else if (alerts.locationEnabled && !hasFix)
+                          _hint(cs, 'Pridobivanje lokacije…')
+                        else if (alerts.locationEnabled)
+                          if (nearby.isEmpty)
+                            _hint(
+                              cs,
+                              _query.isNotEmpty
+                                  ? 'Ni zadetkov v bližini.'
+                                  : 'Ni dogodkov v bližini.',
+                            )
+                          else
+                            _eventCard(
+                              context,
+                              nearby
+                                  .take(50)
+                                  .map(
+                                    (n) => _eventRow(
+                                      context,
+                                      n.event,
+                                      trailing: _distance(n.distanceMeters),
+                                    ),
+                                  )
+                                  .toList(),
+                            )
+                        else if (allEvents.isEmpty)
+                          _hint(
+                            cs,
+                            _query.isNotEmpty
+                                ? 'Ni zadetkov.'
+                                : 'Trenutno ni dogodkov.',
+                          )
+                        else
+                          _eventCard(
+                            context,
+                            // Each row holds a live mini-map; cap it like the
+                            // nearby list so 150+ events don't build 150 maps.
+                            allEvents
+                                .take(50)
+                                .map((e) => _eventRow(context, e))
+                                .toList(),
+                          ),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -579,7 +604,7 @@ class _NearbyTabState extends State<NearbyTab> {
     );
   }
 
-  Widget _locationPrompt(BuildContext context, AlertsController alerts) {
+  Widget _eventsError(BuildContext context, EventsProvider provider) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -590,21 +615,72 @@ class _NearbyTabState extends State<NearbyTab> {
           children: [
             Row(
               children: [
-                Icon(Icons.my_location, color: cs.primary),
+                Icon(Icons.cloud_off, color: cs.error),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Vklopi lokacijo za prikaz dogodkov v bližini in opozorila.',
+                    provider.error ?? '',
                     style: TextStyle(color: cs.onSurface),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            AdaptiveButton(
-              onPressed: alerts.requesting ? () {} : alerts.enableLocation,
-              label: alerts.requesting ? 'Pridobivanje…' : 'Vklopi lokacijo',
+            AdaptiveButton.child(
+              onPressed: provider.refresh,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.refresh, size: 18),
+                  SizedBox(width: 8),
+                  Text('Poskusi znova'),
+                ],
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _locationPrompt(BuildContext context, AlertsController alerts) {
+    final cs = Theme.of(context).colorScheme;
+    final problem = alerts.locationProblemMessage;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: AdaptiveCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  problem != null ? Icons.location_disabled : Icons.my_location,
+                  color: problem != null ? cs.error : cs.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    problem ??
+                        'Vklopi lokacijo za prikaz dogodkov v bližini in '
+                            'opozorila.',
+                    style: TextStyle(color: cs.onSurface),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (problem != null && alerts.canOpenLocationSettings)
+              AdaptiveButton(
+                onPressed: alerts.openLocationSettings,
+                label: 'Odpri nastavitve',
+              )
+            else
+              AdaptiveButton(
+                onPressed: alerts.requesting ? () {} : alerts.enableLocation,
+                label: alerts.requesting ? 'Pridobivanje…' : 'Vklopi lokacijo',
+              ),
           ],
         ),
       ),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -12,7 +14,7 @@ import '../services/prefs.dart';
 class IntroWizardScreen extends StatefulWidget {
   const IntroWizardScreen({super.key});
 
-  static const int version = 2;
+  static const int version = 3;
   static const String _key = 'onboarding.version';
 
   /// Whether the wizard should be shown (not yet completed for this version).
@@ -47,24 +49,25 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
   List<Widget> get _pages => [
     _Page(
       icon: Icons.traffic,
-      title: 'Dobrodošli v Prometnik',
+      title: 'Dobrodošli v Prometniku',
       body:
-          'Vreme, kamere, dogodki in potovalni časi na slovenskih cestah — '
-          'na enem mestu. Podatki: DARS / promet.si.',
+          'Dogodki, kamere, vreme in stanje cest ter potovalni časi na '
+          'slovenskih cestah — na enem mestu.',
     ),
     _Page(
       icon: Icons.map,
       title: 'Karta in kamere',
       body:
           'Na karti so vremenske postaje, kamere in dogodki. Zavihek Kamere '
-          'pa zbira vse kamere DARS s sliko v živo.',
+          'zbira kamere vremenskih postaj in kamere DARS s sliko v živo.',
     ),
     _Page(
       icon: Icons.warning_amber_rounded,
       title: 'Dogodki in časi',
       body:
-          'Zapore, zastoji in dela s prizadetim odsekom na karti. Filtriraj po '
-          'vrsti in viru (DRSI/DARS). Zavihek Časi prikaže potovalne čase.',
+          'Zapore, zastoji in dela s prizadetim odsekom na karti. Filtriraj '
+          'jih po vrsti. Zavihek Časi prikaže potovalne čase na glavnih '
+          'poteh.',
     ),
     _Page(
       icon: Icons.near_me,
@@ -74,15 +77,43 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
           'spremljane ceste tapni "Izberi na karti" in nato tapni cesto na '
           'karti — obvestili te bomo o dogodkih na njej.',
       child: Consumer<AlertsController>(
-        builder: (context, alerts, _) => AdaptiveButton(
-          onPressed: alerts.locationEnabled || alerts.requesting
-              ? () {}
-              : alerts.enableLocation,
-          label: alerts.locationEnabled
-              ? 'Lokacija vklopljena'
-              : (alerts.requesting ? 'Pridobivanje…' : 'Vklopi lokacijo'),
-          style: AdaptiveButtonStyle.tinted,
-        ),
+        builder: (context, alerts, _) {
+          final problem = alerts.locationProblemMessage;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (problem != null) ...[
+                Text(
+                  problem,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (problem != null && alerts.canOpenLocationSettings)
+                AdaptiveButton(
+                  onPressed: alerts.openLocationSettings,
+                  label: 'Odpri nastavitve',
+                  style: AdaptiveButtonStyle.tinted,
+                )
+              else
+                AdaptiveButton(
+                  onPressed: alerts.locationEnabled || alerts.requesting
+                      ? () {}
+                      : alerts.enableLocation,
+                  label: alerts.locationEnabled
+                      ? 'Lokacija vklopljena'
+                      : (alerts.requesting
+                            ? 'Pridobivanje…'
+                            : 'Vklopi lokacijo'),
+                  style: AdaptiveButtonStyle.tinted,
+                ),
+            ],
+          );
+        },
       ),
     ),
     _Page(
@@ -106,8 +137,9 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
       icon: Icons.verified_outlined,
       title: 'Viri podatkov',
       body:
-          'Promet in kamere: ceste.si / promet.si (DARS). Cestno omrežje: '
-          '© OpenStreetMap (ODbL). Podatki so informativne narave.',
+          'Promet, kamere in potovalni časi: DARS / promet.si. Vreme in '
+          'stanje cest: ceste.si, DRSI CVIS in ARSO. Karta: © OpenStreetMap '
+          '(ODbL) in Seznam (mapy.com). Podatki so informativne narave.',
     ),
   ];
 
@@ -220,40 +252,49 @@ class _Page extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: cs.primaryContainer,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 60, color: cs.primary),
+    // Scrolls when large text makes the page taller than the screen; stays
+    // vertically centred when it fits.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: math.max(0, constraints.maxHeight - 32),
           ),
-          const SizedBox(height: 32),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 60, color: cs.primary),
+              ),
+              const SizedBox(height: 32),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                body,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  height: 1.5,
+                  fontSize: 15,
+                ),
+              ),
+              if (child != null) ...[const SizedBox(height: 24), child!],
+            ],
           ),
-          const SizedBox(height: 18),
-          Text(
-            body,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              height: 1.5,
-              fontSize: 15,
-            ),
-          ),
-          if (child != null) ...[const SizedBox(height: 24), child!],
-        ],
+        ),
       ),
     );
   }

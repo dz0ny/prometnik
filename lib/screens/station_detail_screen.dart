@@ -63,6 +63,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
         final cs = Theme.of(context).colorScheme;
         final favs = context.watch<FavoritesProvider>();
         final isFav = favs.isFavorite(station.stationId);
+        final updated = station.weather?.timestamp;
 
         return AdaptiveScaffold(
           appBar: AdaptiveAppBar(
@@ -71,12 +72,16 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
               AdaptiveAppBarAction(
                 icon: isFav ? Icons.star : Icons.star_border,
                 iosSymbol: isFav ? 'star.fill' : 'star',
+                label: isFav
+                    ? 'Odstrani iz priljubljenih'
+                    : 'Dodaj med priljubljene',
                 tintColor: isFav ? const Color(0xFFFFB74D) : null,
                 onPressed: () => favs.toggle(station.stationId),
               ),
               AdaptiveAppBarAction(
                 icon: Icons.map_outlined,
                 iosSymbol: 'map',
+                label: 'Pokaži na karti',
                 onPressed: () {
                   context.read<NavigationNotifier>().showStationOnMap(
                     station.stationId,
@@ -85,15 +90,15 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
               ),
             ],
           ),
-          // On iOS the CupertinoNavigationBar is translucent and the body
-          // extends behind it, so honour the top inset to keep the webcam clear
-          // of the bar. On Android the opaque AppBar already insets the body.
+          // The SafeArea clears the status bar and, on iOS 26, the native
+          // toolbar too (the scaffold adds the toolbar height to the top
+          // padding), so no extra app-bar inset is added here.
           body: SafeArea(
             bottom: false,
             child: ListView(
               padding: EdgeInsets.fromLTRB(
                 16,
-                16 + AppTheme.appBarContentInset(),
+                16,
                 16,
                 16 + AppTheme.bottomBarContentInset(context),
               ),
@@ -105,17 +110,24 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.schedule, size: 16, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Posodobljeno: ${WeatherFormat.timestamp(station.weather?.timestamp)}',
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 12,
+                    if (updated != null) ...[
+                      Icon(
+                        Icons.schedule,
+                        size: 16,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Posodobljeno: ${WeatherFormat.timestamp(updated)}',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
-                    ),
+                    ] else
+                      const Spacer(),
                     AdaptiveButton.child(
                       onPressed: () => _openCameraInBrowser(station.cameraLink),
                       style: AdaptiveButtonStyle.plain,
@@ -125,7 +137,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                         children: [
                           Icon(Icons.open_in_new, size: 16, color: cs.primary),
                           const SizedBox(width: 6),
-                          Text('Slika', style: TextStyle(color: cs.primary)),
+                          Text('Kamera', style: TextStyle(color: cs.primary)),
                         ],
                       ),
                     ),

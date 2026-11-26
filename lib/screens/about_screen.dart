@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../theme/app_theme.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -49,18 +48,20 @@ class _AboutScreenState extends State<AboutScreen> {
     final cs = Theme.of(context).colorScheme;
     return AdaptiveScaffold(
       appBar: const AdaptiveAppBar(title: 'O aplikaciji'),
-      // iOS: keep content clear of the translucent navigation bar.
+      // The SafeArea also clears the iOS 26 native toolbar (the scaffold adds
+      // its height to the top padding), so no extra app-bar inset is needed.
       body: SafeArea(
         bottom: false,
         child: ListView(
           padding: EdgeInsets.fromLTRB(
             20,
-            20 + AppTheme.appBarContentInset(),
             20,
             20,
+            // Pushed above the tab bar; only the home indicator to clear.
+            20 + MediaQuery.paddingOf(context).bottom,
           ),
           children: [
-            Icon(Icons.thermostat, size: 64, color: cs.primary),
+            Icon(Icons.traffic, size: 64, color: cs.primary),
             const SizedBox(height: 12),
             Center(
               child: Text(
@@ -77,36 +78,73 @@ class _AboutScreenState extends State<AboutScreen> {
               ),
             const SizedBox(height: 24),
             Text(
-              'Prikazuje temperaturo in spletne kamere vremenskih postaj na '
-              'slovenskih cestah. Podatki se osvežujejo vsakih 10 minut.',
+              'Prometnik zbere promet na slovenskih cestah na enem mestu: '
+              'dogodke (zapore, zastoje, dela), kamere v živo, vreme in stanje '
+              'cest, potovalne čase na glavnih poteh ter opozorila za ceste, '
+              'ki jih spremljaš, in dogodke v tvoji bližini. Podatki se '
+              'samodejno osvežujejo.',
               style: TextStyle(color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 24),
             const Divider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+              child: Text(
+                'VIRI PODATKOV',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
             AdaptiveListTile(
-              leading: const Icon(Icons.public),
-              title: const Text('Vir podatkov'),
-              subtitle: const Text('ceste.si (DARS)'),
+              leading: const Icon(Icons.warning_amber_rounded),
+              title: const Text('Dogodki, kamere, potovalni časi'),
+              subtitle: const Text('DARS / promet.si'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () => _open('https://www.promet.si/'),
+            ),
+            AdaptiveListTile(
+              leading: const Icon(Icons.thermostat),
+              title: const Text('Vreme in kamere postaj'),
+              subtitle: const Text('ceste.si'),
               trailing: const Icon(Icons.open_in_new),
               onTap: () => _open('https://www.ceste.si/Vreme/'),
             ),
             AdaptiveListTile(
-              leading: const Icon(Icons.videocam),
-              title: const Text('Kamere'),
-              subtitle: const Text('kamere.dars.si'),
+              leading: const Icon(Icons.ac_unit),
+              title: const Text('Stanje cest'),
+              subtitle: const Text('DRSI CVIS'),
               trailing: const Icon(Icons.open_in_new),
-              onTap: () => _open('https://kamere.dars.si/'),
+              onTap: () => _open('http://drsi.cgs-labs.si/CVIS'),
+            ),
+            AdaptiveListTile(
+              leading: const Icon(Icons.cloud_outlined),
+              title: const Text('Vremenske kamere'),
+              subtitle: const Text('ARSO'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () => _open('https://meteo.arso.gov.si/'),
             ),
             AdaptiveListTile(
               leading: const Icon(Icons.map),
-              title: const Text('Cestno omrežje'),
+              title: const Text('Cestno omrežje in karta'),
               subtitle: const Text('© OpenStreetMap contributors (ODbL)'),
               trailing: const Icon(Icons.open_in_new),
               onTap: () => _open('https://www.openstreetmap.org/copyright'),
             ),
+            AdaptiveListTile(
+              leading: const Icon(Icons.layers_outlined),
+              title: const Text('Turistična karta'),
+              subtitle: const Text('© Seznam.cz (mapy.com)'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () => _open('https://mapy.com/'),
+            ),
             const SizedBox(height: 24),
             Text(
-              'Podatki so informativne narave. Aplikacija ni uradni produkt DARS.',
+              'Podatki so informativne narave. Aplikacija ni uradni produkt DARS, '
+              'DRSI ali ARSO.',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ],

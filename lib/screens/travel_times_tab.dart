@@ -14,7 +14,9 @@ import '../widgets/event_marker.dart';
 import '../widgets/event_sheet.dart';
 import '../widgets/event_visuals.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_sheet.dart';
 import '../widgets/base_tile_layer.dart';
+import '../widgets/sheet_snack.dart';
 
 /// Lists travel times ("potovalni časi") for the main routes, with the current
 /// duration and any delay, from the promet.si data channel.
@@ -147,6 +149,21 @@ class _TravelRow extends StatelessWidget {
 
   const _TravelRow({super.key, required this.item});
 
+  Future<void> _toggleAlerts(
+    BuildContext context,
+    AlertsController alerts,
+  ) async {
+    final nowWatched = await alerts.toggleTravelTime(item.id);
+    if (nowWatched || !alerts.notificationsDenied || !context.mounted) return;
+    showSheetSnack(
+      context,
+      message: 'Obvestila so izklopljena. Omogoči jih v nastavitvah.',
+      error: true,
+      duration: const Duration(seconds: 4),
+    );
+    alerts.dismissNotificationsDenied();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -227,13 +244,26 @@ class _TravelRow extends StatelessWidget {
                   ],
                 ),
               const SizedBox(width: 4),
-              AdaptiveButton.icon(
-                icon: watched
-                    ? Icons.notifications_active
-                    : Icons.notifications_none,
-                iconColor: watched ? cs.primary : cs.onSurfaceVariant,
-                style: AdaptiveButtonStyle.plain,
-                onPressed: () => alerts.toggleTravelTime(item.id),
+              Semantics(
+                button: true,
+                toggled: watched,
+                label: watched
+                    ? 'Izklopi obvestila za ${item.route}'
+                    : 'Obvestila za ${item.route}',
+                child: Tooltip(
+                  message: watched
+                      ? 'Izklopi obvestila za ${item.route}'
+                      : 'Obvestila za ${item.route}',
+                  child: AdaptiveButton.icon(
+                    icon: watched
+                        ? Icons.notifications_active
+                        : Icons.notifications_none,
+                    iconColor: watched ? cs.primary : cs.onSurfaceVariant,
+                    style: AdaptiveButtonStyle.plain,
+                    minSize: const Size(44, 44),
+                    onPressed: () => _toggleAlerts(context, alerts),
+                  ),
+                ),
               ),
             ],
           ),
@@ -376,56 +406,60 @@ class _TravelRouteMapState extends State<_TravelRouteMap>
           height: 112,
           child: Stack(
             children: [
-              FlutterMap(
-                options: MapOptions(
-                  initialCenter: _spec.bounds.center,
-                  initialZoom: 9,
-                  initialCameraFit: CameraFit.bounds(
-                    bounds: _spec.bounds,
-                    padding: const EdgeInsets.all(18),
-                    maxZoom: 11,
-                  ),
-                  backgroundColor: cs.surfaceContainerHighest,
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
-                  ),
-                ),
-                children: [
-                  buildBaseTileLayer(
-                    context,
-                    base: BaseMap.saved,
-                    isDark: isDark,
-                  ),
-                  if (_roads.isNotEmpty)
-                    PolylineLayer(
-                      simplificationTolerance: 2,
-                      polylines: [
-                        for (final road in _roads)
-                          Polyline(
-                            points: road.points,
-                            color: widget.color,
-                            strokeWidth: 4,
-                            borderColor: Colors.white.withValues(alpha: 0.75),
-                            borderStrokeWidth: 1,
-                          ),
-                      ],
+              // Non-interactive preview: let taps reach the row's detector
+              // (FlutterMap would otherwise swallow them).
+              IgnorePointer(
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: _spec.bounds.center,
+                    initialZoom: 9,
+                    initialCameraFit: CameraFit.bounds(
+                      bounds: _spec.bounds,
+                      padding: const EdgeInsets.all(18),
+                      maxZoom: 11,
                     ),
-                  if (events.isNotEmpty)
-                    MarkerLayer(
-                      markers: [
-                        for (final event in events)
-                          Marker(
-                            point: event.position,
-                            width: 24,
-                            height: 24,
-                            child: EventMarker(
-                              event: event,
-                              onTap: () => _showEvents(context, events),
+                    backgroundColor: cs.surfaceContainerHighest,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.none,
+                    ),
+                  ),
+                  children: [
+                    buildBaseTileLayer(
+                      context,
+                      base: BaseMap.saved,
+                      isDark: isDark,
+                    ),
+                    if (_roads.isNotEmpty)
+                      PolylineLayer(
+                        simplificationTolerance: 2,
+                        polylines: [
+                          for (final road in _roads)
+                            Polyline(
+                              points: road.points,
+                              color: widget.color,
+                              strokeWidth: 4,
+                              borderColor: Colors.white.withValues(alpha: 0.75),
+                              borderStrokeWidth: 1,
                             ),
-                          ),
-                      ],
-                    ),
-                ],
+                        ],
+                      ),
+                    if (events.isNotEmpty)
+                      MarkerLayer(
+                        markers: [
+                          for (final event in events)
+                            Marker(
+                              point: event.position,
+                              width: 24,
+                              height: 24,
+                              child: EventMarker(
+                                event: event,
+                                onTap: () => _showEvents(context, events),
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
               ),
               Positioned(
                 right: 8,
@@ -507,104 +541,52 @@ class _TravelRouteMapState extends State<_TravelRouteMap>
 
   void _showEvents(BuildContext context, List<TrafficEvent> events) {
     final cs = Theme.of(context).colorScheme;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => DraggableScrollableSheet(
-        initialChildSize: events.isEmpty ? 0.32 : 0.72,
-        minChildSize: 0.28,
-        maxChildSize: 0.94,
-        expand: false,
-        builder: (context, scrollController) => Container(
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: cs.outline,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.item.route,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.of(sheetContext).pop(),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: events.isEmpty
-                      ? ListView(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
-                          children: [
-                            Text(
-                              'Ni aktivnih dogodkov na tej poti.',
-                              style: TextStyle(color: cs.onSurfaceVariant),
-                            ),
-                          ],
-                        )
-                      : ListView.separated(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
-                          itemCount: events.length,
-                          separatorBuilder: (_, _) => Divider(
-                            height: 1,
-                            color: cs.outline.withValues(alpha: 0.25),
-                          ),
-                          itemBuilder: (context, index) {
-                            final event = events[index];
-                            final color = EventVisuals.color(event.severity);
-                            return ListTile(
-                              leading: Icon(
-                                EventVisuals.causeIcon(event),
-                                color: color,
-                              ),
-                              title: Text(
-                                event.title.isEmpty ? event.cause : event.title,
-                              ),
-                              subtitle: Text(
-                                [
-                                  if (event.road.isNotEmpty) event.road,
-                                  if (event.description.isNotEmpty)
-                                    event.description,
-                                ].join(' · '),
-                              ),
-                              onTap: () {
-                                Navigator.of(sheetContext).pop();
-                                showEventSheet(context, event);
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ),
+    showAppSheet<void>(
+      context,
+      builder: (sheetContext) => AppSheet(
+        title: widget.item.route,
+        titleMaxLines: 2,
+        subtitle: events.isEmpty
+            ? null
+            : (events.length == 1 ? '1 dogodek' : '${events.length} dogodkov'),
+        initialSize: events.isEmpty ? 0.32 : 0.62,
+        children: [
+          if (events.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 12, 4, 12),
+              child: Text(
+                'Ni aktivnih dogodkov na tej poti.',
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+            )
+          else
+            for (var i = 0; i < events.length; i++) ...[
+              if (i > 0)
+                Divider(height: 1, color: cs.outline.withValues(alpha: 0.25)),
+              _eventTile(sheetContext, events[i]),
+            ],
+        ],
       ),
+    );
+  }
+
+  Widget _eventTile(BuildContext sheetContext, TrafficEvent event) {
+    final color = EventVisuals.color(event.severity);
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      leading: Icon(EventVisuals.causeIcon(event), color: color),
+      title: Text(event.title.isEmpty ? event.cause : event.title),
+      subtitle: Text(
+        [
+          if (event.road.isNotEmpty) event.road,
+          if (event.description.isNotEmpty) event.description,
+        ].join(' · '),
+      ),
+      onTap: () {
+        Navigator.of(sheetContext).pop();
+        // The sheet's context is gone after the pop; open from this row's.
+        if (mounted) showEventSheet(context, event);
+      },
     );
   }
 }
