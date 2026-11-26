@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -12,6 +13,30 @@ class WebcamFrame {
   final Uint8List bytes;
   final DateTime at;
   const WebcamFrame(this.bytes, this.at);
+}
+
+/// One hour of a camera's history: either a frame already on the device
+/// ([bytes]) or an hourly snapshot kept by the edge worker ([url]).
+class WebcamHistoryEntry {
+  /// Local start of the hour.
+  final DateTime at;
+  final Uint8List? bytes;
+  final String? url;
+  const WebcamHistoryEntry({required this.at, this.bytes, this.url})
+    : assert(bytes != null || url != null);
+
+  bool get isLocal => bytes != null;
+
+  /// The entry as a frame, when its bytes are on the device.
+  WebcamFrame? get frame => bytes == null ? null : WebcamFrame(bytes!, at);
+}
+
+/// An hourly snapshot listed by the worker's `/history` endpoint.
+class ServerSnapshot {
+  /// Start of the hour (UTC as sent by the worker).
+  final DateTime at;
+  final String url;
+  const ServerSnapshot(this.at, this.url);
 }
 
 /// Keeps webcam frames on the device so images appear instantly and a short
@@ -159,6 +184,107 @@ class WebcamStore {
     return out;
   }
 
+  /// Local hourly snapshots merged with the worker's hourly snapshots for
+  /// [url], oldest first. Local bytes win for an hour both have; when the
+  /// worker can't be reached this is just the local history.
+  Future<List<WebcamHistoryEntry>> mergedHistory(String url) async {
+    final results = await Future.wait([
+      history(url),
+      _serverHistory(cameraKey(url)),
+    ]);
+    return mergeWebcamHistory(
+      results[0] as List<WebcamFrame>,
+      results[1] as List<ServerSnapshot>,
+      now: DateTime.now(),
+    );
+  }
+
+  /// Cache for the worker's snapshot images (thumbnails and full frames).
+  final CacheManager snapshotCache = CacheManager(
+    Config(
+      'webcamServerSnaps',
+      stalePeriod: const Duration(hours: historyHours + 1),
+      maxNrOfCacheObjects: 2000,
+    ),
+  );
+
+  static const Duration _serverTimeout = Duration(seconds: 10);
+  static const Duration _serverListTtl = Duration(minutes: 5);
+  static const Duration _serverFailTtl = Duration(minutes: 1);
+  static const int _snapMemLimit = 48;
+
+  final Map<String, ({DateTime fetched, List<ServerSnapshot> list, bool ok})>
+  _serverLists = {};
+  final Map<String, Future<List<ServerSnapshot>>> _serverInFlight = {};
+  final LinkedHashMap<String, WebcamFrame> _snaps = LinkedHashMap();
+  final Map<String, Future<WebcamFrame?>> _snapInFlight = {};
+
+  Future<List<ServerSnapshot>> _serverHistory(String key) {
+    final cam = Uri.tryParse(key);
+    if (cam == null || !webcamProxyHosts.contains(cam.host.toLowerCase())) {
+      return Future.value(const []);
+    }
+    final cached = _serverLists[key];
+    if (cached != null &&
+        DateTime.now().difference(cached.fetched) <
+            (cached.ok ? _serverListTtl : _serverFailTtl)) {
+      return Future.value(cached.list);
+    }
+    return _serverInFlight[key] ??= _fetchServerHistory(key)
+        .whenComplete(() => _serverInFlight.remove(key));
+  }
+
+  Future<List<ServerSnapshot>> _fetchServerHistory(String key) async {
+    var ok = false;
+    var list = const <ServerSnapshot>[];
+    try {
+      final uri = Uri.https(webcamProxyHost, '/history', {'u': key});
+      final res = await _http.get(uri).timeout(_serverTimeout);
+      if (res.statusCode == 200) {
+        list = parseServerHistory(res.body);
+        ok = true;
+      } else {
+        debugPrint('WebcamStore: history $key answered ${res.statusCode}');
+      }
+    } on Exception catch (e) {
+      debugPrint('WebcamStore.serverHistory($key): $e');
+    }
+    _serverLists[key] = (fetched: DateTime.now(), list: list, ok: ok);
+    return list;
+  }
+
+  /// The frame for a history [entry]: its local bytes, or the worker's
+  /// snapshot downloaded (cached in memory and on disk). Null on failure.
+  Future<WebcamFrame?> snapshotFrame(WebcamHistoryEntry entry) {
+    final local = entry.frame;
+    if (local != null) return Future.value(local);
+    final url = entry.url!;
+    final mem = _snaps.remove(url);
+    if (mem != null) {
+      _snaps[url] = mem;
+      return Future.value(mem);
+    }
+    return _snapInFlight[url] ??= _downloadSnap(
+      url,
+      entry.at,
+    ).whenComplete(() => _snapInFlight.remove(url));
+  }
+
+  Future<WebcamFrame?> _downloadSnap(String url, DateTime at) async {
+    try {
+      final file = await snapshotCache.getSingleFile(url).timeout(_timeout);
+      final frame = WebcamFrame(await file.readAsBytes(), at);
+      _snaps[url] = frame;
+      while (_snaps.length > _snapMemLimit) {
+        _snaps.remove(_snaps.keys.first);
+      }
+      return frame;
+    } on Exception catch (e) {
+      debugPrint('WebcamStore.snapshot($url): $e');
+      return null;
+    }
+  }
+
   void _remember(String key, WebcamFrame frame) {
     _latest.remove(key);
     _latest[key] = frame;
@@ -185,6 +311,69 @@ String cameraKey(String url) {
       ? cam.replace(query: '')
       : cam.replace(queryParameters: params);
   return stripped.removeFragment().toString().replaceAll(RegExp(r'\?$'), '');
+}
+
+/// Parses the worker's `/history` response. Anything malformed (bad JSON,
+/// missing fields, unparsable times, non-http URLs) is dropped; a broken
+/// body gives an empty list.
+List<ServerSnapshot> parseServerHistory(String body) {
+  Object? json;
+  try {
+    json = jsonDecode(body);
+  } on FormatException {
+    return const [];
+  }
+  if (json is! Map) return const [];
+  final frames = json['frames'];
+  if (frames is! List) return const [];
+  final out = <ServerSnapshot>[];
+  for (final f in frames) {
+    if (f is! Map) continue;
+    final at = f['at'];
+    final url = f['url'];
+    if (at is! String || url is! String) continue;
+    final time = DateTime.tryParse(at);
+    final uri = Uri.tryParse(url);
+    if (time == null || uri == null || !uri.isScheme('https')) continue;
+    out.add(ServerSnapshot(time, url));
+  }
+  return out;
+}
+
+/// Merges device-local hourly [local] frames with the worker's [server]
+/// snapshots into one entry per hour, oldest first, covering the
+/// [WebcamStore.historyHours] hours up to [now]. Hours are matched as
+/// instants (server UTC hour vs local hour); local bytes win when both
+/// have an hour. Entry times are local.
+List<WebcamHistoryEntry> mergeWebcamHistory(
+  List<WebcamFrame> local,
+  List<ServerSnapshot> server, {
+  required DateTime now,
+}) {
+  const hourMs = Duration.millisecondsPerHour;
+  int bucket(DateTime t) {
+    final ms = t.millisecondsSinceEpoch;
+    return ms - ms % hourMs;
+  }
+
+  final newest = bucket(now);
+  final oldest = newest - (WebcamStore.historyHours - 1) * hourMs;
+  bool inRange(int b) => b >= oldest && b <= newest;
+  DateTime localAt(int b) => DateTime.fromMillisecondsSinceEpoch(b);
+
+  final byHour = <int, WebcamHistoryEntry>{};
+  for (final s in server) {
+    final b = bucket(s.at);
+    if (!inRange(b)) continue;
+    byHour[b] = WebcamHistoryEntry(at: localAt(b), url: s.url);
+  }
+  for (final f in local) {
+    final b = bucket(f.at);
+    if (!inRange(b)) continue;
+    byHour[b] = WebcamHistoryEntry(at: localAt(b), bytes: f.bytes);
+  }
+  final keys = byHour.keys.toList()..sort();
+  return [for (final k in keys) byHour[k]!];
 }
 
 @visibleForTesting

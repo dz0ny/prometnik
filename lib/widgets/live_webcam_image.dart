@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../services/webcam_store.dart';
@@ -137,8 +138,10 @@ class _LiveWebcamImageState extends State<LiveWebcamImage> {
 /// "V živo" chip first. Picking an hour calls [onSelect] with that frame;
 /// "V živo" calls it with null. Hidden until at least one snapshot exists.
 ///
-/// Snapshots are captured on this device whenever the app loads the camera,
-/// so the strip only has hours in which the camera was viewed.
+/// Hours come from this device (captured whenever the app loads the camera)
+/// and from the edge worker, which snapshots every camera once an hour. A
+/// worker snapshot is downloaded when picked; if the worker can't be
+/// reached, only the device's hours are shown.
 class WebcamHistoryStrip extends StatefulWidget {
   /// Any URL of the camera (proxied/busted is fine).
   final String url;
@@ -161,7 +164,10 @@ class WebcamHistoryStrip extends StatefulWidget {
 }
 
 class _WebcamHistoryStripState extends State<WebcamHistoryStrip> {
-  List<WebcamFrame> _history = const [];
+  List<WebcamHistoryEntry> _history = const [];
+
+  /// The worker snapshot being downloaded after a tap, if any.
+  DateTime? _loadingAt;
 
   @override
   void initState() {
@@ -174,20 +180,53 @@ class _WebcamHistoryStripState extends State<WebcamHistoryStrip> {
     super.didUpdateWidget(old);
     if (old.refreshToken != widget.refreshToken ||
         cameraKey(old.url) != cameraKey(widget.url)) {
+      if (cameraKey(old.url) != cameraKey(widget.url)) {
+        _history = const [];
+        _loadingAt = null;
+      }
       unawaited(_load());
     }
   }
 
   Future<void> _load() async {
-    final h = await WebcamStore.instance.history(widget.url);
-    if (mounted) setState(() => _history = h);
+    final store = WebcamStore.instance;
+    final key = cameraKey(widget.url);
+    bool current() => mounted && cameraKey(widget.url) == key;
+    // Device hours first (fast), then merged with the worker's list, so a
+    // slow or unreachable worker never holds the strip back.
+    final merged = store.mergedHistory(widget.url);
+    final local = await store.history(widget.url);
+    if (current() && _history.isEmpty) {
+      setState(
+        () =>
+            _history = mergeWebcamHistory(local, const [], now: DateTime.now()),
+      );
+    }
+    final all = await merged;
+    if (current()) setState(() => _history = all);
+  }
+
+  Future<void> _pick(WebcamHistoryEntry e) async {
+    final local = e.frame;
+    if (local != null) {
+      setState(() => _loadingAt = null);
+      widget.onSelect(local);
+      return;
+    }
+    setState(() => _loadingAt = e.at);
+    final frame = await WebcamStore.instance.snapshotFrame(e);
+    // Ignore a download the user moved on from (another tile, V živo).
+    if (!mounted || _loadingAt != e.at) return;
+    setState(() => _loadingAt = null);
+    if (frame != null) widget.onSelect(frame);
   }
 
   @override
   Widget build(BuildContext context) {
     if (_history.isEmpty) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
-    final frames = _history.reversed.toList(); // newest first
+    final entries = _history.reversed.toList(); // newest first
+    final selectedAt = widget.selected?.at;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Column(
@@ -206,29 +245,71 @@ class _WebcamHistoryStripState extends State<WebcamHistoryStrip> {
             height: 64,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: frames.length + 1,
+              itemCount: entries.length + 1,
               separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (context, i) {
                 if (i == 0) {
                   return _tile(
                     context,
-                    selected: widget.selected == null,
+                    selected: widget.selected == null && _loadingAt == null,
                     label: 'V živo',
-                    onTap: () => widget.onSelect(null),
+                    onTap: () {
+                      setState(() => _loadingAt = null);
+                      widget.onSelect(null);
+                    },
                     child: Icon(Icons.videocam, color: cs.primary, size: 22),
                   );
                 }
-                final f = frames[i - 1];
+                final e = entries[i - 1];
+                final loading = _loadingAt == e.at;
+                final thumb = e.bytes != null
+                    ? Image.memory(
+                        e.bytes!,
+                        fit: BoxFit.cover,
+                        cacheWidth: 192,
+                        gaplessPlayback: true,
+                      )
+                    : CachedNetworkImage(
+                        imageUrl: e.url!,
+                        cacheManager: WebcamStore.instance.snapshotCache,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 192,
+                        fadeInDuration: const Duration(milliseconds: 150),
+                        placeholder: (_, _) => const SizedBox.shrink(),
+                        errorWidget: (_, _, _) => Icon(
+                          Icons.image_not_supported_outlined,
+                          color: cs.onSurfaceVariant,
+                          size: 18,
+                        ),
+                      );
                 return _tile(
                   context,
-                  selected: identical(widget.selected, f),
-                  label: '${f.at.hour.toString().padLeft(2, '0')}:00',
-                  onTap: () => widget.onSelect(f),
-                  child: Image.memory(
-                    f.bytes,
-                    fit: BoxFit.cover,
-                    cacheWidth: 192,
-                    gaplessPlayback: true,
+                  selected:
+                      loading ||
+                      (_loadingAt == null &&
+                          selectedAt != null &&
+                          selectedAt.isAtSameMomentAs(e.at)),
+                  label: '${e.at.hour.toString().padLeft(2, '0')}:00',
+                  onTap: () => unawaited(_pick(e)),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      thumb,
+                      if (loading)
+                        const ColoredBox(
+                          color: Colors.black38,
+                          child: Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 );
               },
