@@ -39,71 +39,81 @@ class TemperatureMarker extends StatelessWidget {
         ? Colors.white
         : Colors.black87;
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      // Let the pill size to its content; the surrounding Marker box is only
-      // used for positioning/culling, so painting slightly outside it is fine.
-      // This avoids sub-pixel RenderFlex overflow on wider (2-digit) labels.
-      child: OverflowBox(
-        minWidth: 0,
-        maxWidth: double.infinity,
-        alignment: Alignment.bottomCenter,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (thumbnailUrl != null) ...[
-              WebcamThumbnail.sized(thumbnailUrl!, thumbnailSize),
-              const SizedBox(height: WebcamThumbnail.gap),
-            ],
-            Container(
-              padding: isCamera
-                  ? const EdgeInsets.all(5)
-                  : const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [_lighten(color, 0.10), color],
-                ),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white, width: 1.5),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black38,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
+    final name = station.name.trim();
+    final semanticLabel = isCamera
+        ? 'Kamera ${name.isEmpty ? '' : name}'.trim()
+        : '${name.isEmpty ? 'Vremenska postaja' : name}, ${temp.round()} °C';
+
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        // Let the pill size to its content; the surrounding Marker box is only
+        // used for positioning/culling, so painting slightly outside it is fine.
+        // This avoids sub-pixel RenderFlex overflow on wider (2-digit) labels.
+        child: OverflowBox(
+          minWidth: 0,
+          maxWidth: double.infinity,
+          alignment: Alignment.bottomCenter,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (thumbnailUrl != null) ...[
+                WebcamThumbnail.sized(thumbnailUrl!, thumbnailSize),
+                const SizedBox(height: WebcamThumbnail.gap),
+              ],
+              Container(
+                padding: isCamera
+                    ? const EdgeInsets.all(5)
+                    : const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [_lighten(color, 0.10), color],
                   ),
-                ],
-              ),
-              child: isCamera
-                  ? Icon(Icons.videocam, size: 14, color: fg)
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.thermostat, size: 13, color: fg),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${temp.round()}°',
-                          style: TextStyle(
-                            color: fg,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            height: 1.0,
-                          ),
-                        ),
-                      ],
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white, width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black38,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
                     ),
-            ),
-            // Pointer tail, drawn slightly under the pill to hide the seam.
-            Transform.translate(
-              offset: const Offset(0, -2),
-              child: CustomPaint(
-                size: const Size(14, 8),
-                painter: _PointerPainter(color: color),
+                  ],
+                ),
+                child: isCamera
+                    ? Icon(Icons.videocam, size: 14, color: fg)
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.thermostat, size: 13, color: fg),
+                          const SizedBox(width: 2),
+                          Text(
+                            '${temp.round()}°',
+                            style: TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              height: 1.0,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
-            ),
-          ],
+              // Pointer tail, drawn slightly under the pill to hide the seam.
+              Transform.translate(
+                offset: const Offset(0, -2),
+                child: CustomPaint(
+                  size: const Size(14, 8),
+                  painter: _PointerPainter(color: color),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

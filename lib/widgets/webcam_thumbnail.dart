@@ -66,16 +66,17 @@ class WebcamThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // No solid fill or shadow behind the frame: while it loads (or fails) it
+    // stays a faint outline instead of a black box burying nearby pins.
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: Colors.black,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white, width: 1.5),
-        boxShadow: const [
-          BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 2)),
-        ],
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.7),
+          width: 1.5,
+        ),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(6.5),
@@ -87,9 +88,13 @@ class WebcamThumbnail extends StatelessWidget {
           useOldImageOnUrlChange: true,
           fit: BoxFit.cover,
           fadeInDuration: const Duration(milliseconds: 150),
-          placeholder: (_, _) => const SizedBox.shrink(),
-          errorWidget: (_, _, _) => const Center(
-            child: Icon(Icons.videocam_off, size: 16, color: Colors.white54),
+          placeholder: (_, _) =>
+              ColoredBox(color: Colors.black.withValues(alpha: 0.12)),
+          errorWidget: (_, _, _) => ColoredBox(
+            color: Colors.black.withValues(alpha: 0.25),
+            child: const Center(
+              child: Icon(Icons.videocam_off, size: 16, color: Colors.white70),
+            ),
           ),
         ),
       ),

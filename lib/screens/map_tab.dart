@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../models/rest_area.dart';
@@ -17,9 +21,11 @@ import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/rest_areas_provider.dart';
 import '../providers/weather_provider.dart';
+import '../router/route_names.dart';
 import '../services/prefs.dart';
 import '../services/roads_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_sheet.dart';
 import '../widgets/base_tile_layer.dart';
 import '../widgets/burja_sheet.dart';
 import '../widgets/drsi_sheet.dart';
@@ -97,6 +103,7 @@ class MapTabState extends State<MapTab> {
 
   @override
   void dispose() {
+    _focusTimer?.cancel();
     _eventRoadHitNotifier.dispose();
     _mapController.dispose();
     super.dispose();
@@ -245,69 +252,45 @@ class MapTabState extends State<MapTab> {
     _showEventChooser(notices);
   }
 
+  /// Sheet height that fits [rows] list tiles under the header, capped so the
+  /// map stays visible behind it.
+  static double _chooserSize(BuildContext context, int rows) {
+    final h = MediaQuery.sizeOf(context).height;
+    if (h <= 0) return 0.5;
+    return ((64 + rows * 72 + 32) / h).clamp(0.3, 0.7);
+  }
+
+  static Widget _chooserDivider(BuildContext context) => Divider(
+    height: 1,
+    color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+  );
+
   void _showEventChooser(List<TrafficEvent> events) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final cs = Theme.of(context).colorScheme;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Material(
-              color: cs.surface,
-              borderRadius: BorderRadius.circular(16),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                    child: Text(
-                      'Izberi obvestilo',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: events.length,
-                      separatorBuilder: (_, _) => Divider(
-                        height: 1,
-                        color: cs.outline.withValues(alpha: 0.2),
-                      ),
-                      itemBuilder: (context, index) {
-                        final event = events[index];
-                        final color = EventVisuals.color(event.severity);
-                        final title = event.title.isEmpty
-                            ? event.cause
-                            : event.title;
-                        return ListTile(
-                          leading: Icon(
-                            EventVisuals.causeIcon(event),
-                            color: color,
-                          ),
-                          title: Text(title),
-                          subtitle: Text(event.road),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            showEventSheet(context, event);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+    showAppSheet<void>(
+      context,
+      builder: (sheetContext) => AppSheet(
+        title: 'Dogodki na cesti',
+        subtitle: 'Izberi obvestilo',
+        initialSize: _chooserSize(sheetContext, events.length),
+        padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
+        children: [
+          for (final (i, event) in events.indexed) ...[
+            if (i > 0) _chooserDivider(sheetContext),
+            ListTile(
+              leading: Icon(
+                EventVisuals.causeIcon(event),
+                color: EventVisuals.color(event.severity),
               ),
+              title: Text(event.title.isEmpty ? event.cause : event.title),
+              subtitle: Text(event.road),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                showEventSheet(context, event);
+              },
             ),
-          ),
-        );
-      },
+          ],
+        ],
+      ),
     );
   }
 
@@ -339,68 +322,35 @@ class MapTabState extends State<MapTab> {
       showRestAreaSheet(context, areas.single);
       return;
     }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final cs = Theme.of(context).colorScheme;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Material(
-              color: cs.surface,
-              borderRadius: BorderRadius.circular(16),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                    child: Text(
-                      'Izberi počivališče',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: areas.length,
-                      separatorBuilder: (_, _) => Divider(
-                        height: 1,
-                        color: cs.outline.withValues(alpha: 0.2),
-                      ),
-                      itemBuilder: (context, index) {
-                        final area = areas[index];
-                        final color = restAreaColor(area);
-                        return ListTile(
-                          leading: Icon(Icons.local_parking, color: color),
-                          title: Text(
-                            area.title.isEmpty ? 'Počivališče' : area.title,
-                          ),
-                          subtitle: area.hasLiveAvailability
-                              ? Text(
-                                  '${area.available} / ${area.total} prostih',
-                                )
-                              : const Text('Ni podatkov o zasedenosti'),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            showRestAreaSheet(context, area);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+    showAppSheet<void>(
+      context,
+      builder: (sheetContext) => AppSheet(
+        title: 'Počivališča',
+        subtitle: 'Izberi počivališče',
+        initialSize: _chooserSize(sheetContext, areas.length),
+        padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
+        children: [
+          for (var i = 0; i < areas.length; i++) ...[
+            if (i > 0) _chooserDivider(sheetContext),
+            ListTile(
+              leading: Icon(
+                Icons.local_parking,
+                color: restAreaColor(areas[i]),
               ),
+              title: Text(
+                areas[i].title.isEmpty ? 'Počivališče' : areas[i].title,
+              ),
+              subtitle: areas[i].hasLiveAvailability
+                  ? Text('${areas[i].available} / ${areas[i].total} prostih')
+                  : const Text('Ni podatkov o zasedenosti'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                showRestAreaSheet(context, areas[i]);
+              },
             ),
-          ),
-        );
-      },
+          ],
+        ],
+      ),
     );
   }
 
@@ -424,7 +374,7 @@ class MapTabState extends State<MapTab> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const FilterSectionLabel('Postaje'),
+          const FilterSectionLabel('Sloji'),
           _switchRow(
             Icons.thermostat,
             'Vremenske postaje',
@@ -436,7 +386,7 @@ class MapTabState extends State<MapTab> {
           ),
           _switchRow(
             Icons.videocam,
-            'Kamere',
+            'Kamere na vremenskih postajah',
             _showCameras,
             (v) => setSheet(() {
               setState(() => _showCameras = v);
@@ -445,7 +395,7 @@ class MapTabState extends State<MapTab> {
           ),
           _switchRow(
             Icons.photo_camera,
-            'DARS kamere',
+            'Prometne kamere (DARS)',
             _showDarsCameras,
             (v) => setSheet(() {
               setState(() => _showDarsCameras = v);
@@ -499,11 +449,27 @@ class MapTabState extends State<MapTab> {
               }),
               iconColor: EventVisuals.color(s),
             ),
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          Builder(
+            builder: (sheetContext) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.info_outline),
+              title: const Text('O aplikaciji', style: TextStyle(fontSize: 15)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                context.push(AppRoutes.about);
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 
+  /// A filter row whose label is announced together with its switch and
+  /// toggles it when the whole row is tapped.
   Widget _switchRow(
     IconData icon,
     String label,
@@ -511,16 +477,13 @@ class MapTabState extends State<MapTab> {
     ValueChanged<bool> onChanged, {
     Color? iconColor,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, color: iconColor),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 15))),
-          Switch.adaptive(value: value, onChanged: onChanged),
-        ],
-      ),
+    return SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      secondary: Icon(icon, color: iconColor),
+      title: Text(label, style: const TextStyle(fontSize: 15)),
+      value: value,
+      onChanged: onChanged,
     );
   }
 
@@ -535,14 +498,42 @@ class MapTabState extends State<MapTab> {
     _openStation(station);
   }
 
-  /// Centre the map on an arbitrary location (e.g. a tapped traffic event).
-  void focusLocation(LatLng location) {
+  /// Centre the map on an arbitrary location (e.g. a tapped traffic event)
+  /// and briefly ring it so the target is easy to spot. When [event] is given
+  /// its sheet opens too.
+  void focusLocation(LatLng location, {TrafficEvent? event}) {
     if (_mapReady) _mapController.move(location, 13.0);
+    _focusTimer?.cancel();
+    setState(() => _focusHighlight = location);
+    _focusTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _focusHighlight = null);
+    });
+    if (event != null) showEventSheet(context, event);
   }
+
+  /// Location ringed after [focusLocation], cleared after a few seconds.
+  LatLng? _focusHighlight;
+  Timer? _focusTimer;
 
   Future<void> _goToMyLocation() async {
     final alerts = context.read<AlertsController>();
     if (!alerts.locationEnabled) await alerts.enableLocation();
+    if (!mounted) return;
+    final problem = alerts.locationProblemMessage;
+    if (problem != null) {
+      final canFix = alerts.canOpenLocationSettings;
+      AdaptiveSnackBar.show(
+        context,
+        message: problem,
+        type: AdaptiveSnackBarType.warning,
+        duration: const Duration(seconds: 6),
+        action: canFix ? 'Nastavitve' : null,
+        onActionPressed: canFix
+            ? () => unawaited(alerts.openLocationSettings())
+            : null,
+      );
+      return;
+    }
     final p = alerts.position;
     if (p != null && _mapReady) {
       _mapController.move(LatLng(p.latitude, p.longitude), 13);
@@ -631,18 +622,54 @@ class MapTabState extends State<MapTab> {
                   // DRSI road stations sit above the weather pins, which
                   // often share the spot.
                   if (_showDrsi && DrsiService.isSupported) const _DrsiLayer(),
-                  // Traffic events render on top of the weather markers.
+                  // Traffic events render on top of the camera/weather pins
+                  // and their webcam frames, so a frame never buries one.
                   _EventsLayer(
                     filterKey: _eventFilter.map((e) => e.index).toList()
                       ..sort(),
                     onVisibleChanged: _onVisibleEventsChanged,
                   ),
                   const _UserLocationLayer(),
+                  if (_focusHighlight != null)
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: _focusHighlight!,
+                          width: 64,
+                          height: 64,
+                          child: const IgnorePointer(child: _FocusRing()),
+                        ),
+                      ],
+                    ),
                   buildBaseMapAttribution(
                     _baseMap,
                     bottomInset: AppTheme.bottomBarContentInset(context),
                   ),
                 ],
+              ),
+              // Scrim behind the status bar so pins and webcam frames
+              // scrolled under it don't make the clock unreadable.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: MediaQuery.paddingOf(context).top + 12,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          cs.surface.withValues(alpha: 0.9),
+                          cs.surface.withValues(alpha: 0.6),
+                          cs.surface.withValues(alpha: 0),
+                        ],
+                        stops: const [0, 0.6, 1],
+                      ),
+                    ),
+                  ),
+                ),
               ),
               if (showWeatherError)
                 _errorBanner(context, context.read<WeatherProvider>()),
@@ -675,11 +702,16 @@ class MapTabState extends State<MapTab> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (BaseMap.seznamAvailable) ...[
-                          _MapButton(icon: Icons.layers, onTap: _toggleBaseMap),
+                          _MapButton(
+                            icon: Icons.layers,
+                            label: 'Zamenjaj podlago',
+                            onTap: _toggleBaseMap,
+                          ),
                           const SizedBox(height: 10),
                         ],
                         _MapButton(
                           icon: Icons.my_location,
+                          label: 'Moja lokacija',
                           onTap: _goToMyLocation,
                         ),
                       ],
@@ -743,13 +775,19 @@ class MapTabState extends State<MapTab> {
 /// A small circular pin for a DARS camera. When [thumbnailUrl] is set
 /// (zoomed in), a live webcam frame sits above the pin.
 class _CameraMarker extends StatelessWidget {
+  final String label;
   final VoidCallback onTap;
   final String? thumbnailUrl;
   final ThumbnailSize thumbnailSize;
 
+  /// Visible pin diameter.
   static const double pinSize = 26;
 
+  /// Tappable square around the pin (transparent padding).
+  static const double hitSize = _minPinHitSize;
+
   const _CameraMarker({
+    required this.label,
     required this.onTap,
     this.thumbnailUrl,
     this.thumbnailSize = ThumbnailSize.medium,
@@ -757,18 +795,26 @@ class _CameraMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (thumbnailUrl != null) ...[
-            WebcamThumbnail.sized(thumbnailUrl!, thumbnailSize),
-            const SizedBox(height: WebcamThumbnail.gap),
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (thumbnailUrl != null) ...[
+              WebcamThumbnail.sized(thumbnailUrl!, thumbnailSize),
+              const SizedBox(height: WebcamThumbnail.gap),
+            ],
+            SizedBox.square(
+              dimension: hitSize,
+              child: Center(child: _pin()),
+            ),
           ],
-          _pin(),
-        ],
+        ),
       ),
     );
   }
@@ -812,19 +858,30 @@ class _RestAreaMarker extends StatelessWidget {
 
     if (areas.length == 1 && !areas.single.hasLiveAvailability) {
       final color = restAreaColor(areas.single);
-      return GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.white, width: 1.5),
-            boxShadow: shadow,
+      return Semantics(
+        button: true,
+        label: areas.single.title.isEmpty
+            ? 'Počivališče'
+            : 'Počivališče ${areas.single.title}',
+        excludeSemantics: true,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.white, width: 1.5),
+              boxShadow: shadow,
+            ),
+            child: const Icon(
+              Icons.local_parking,
+              size: 15,
+              color: Colors.white,
+            ),
           ),
-          child: const Icon(Icons.local_parking, size: 15, color: Colors.white),
         ),
       );
     }
@@ -982,18 +1039,41 @@ class _RestAreaGroup {
   }
 }
 
+/// Minimum tappable square for the small circular map pins; the visible pin
+/// is centred in it with transparent padding.
+const double _minPinHitSize = 40;
+
 /// A circular pin for a burja measurement point, tinted by severity.
 class _BurjaMarker extends StatelessWidget {
   final Color color;
+  final String label;
   final VoidCallback onTap;
 
-  const _BurjaMarker({required this.color, required this.onTap});
+  static const double pinSize = 28;
+
+  const _BurjaMarker({
+    required this.color,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Center(child: _pin()),
+      ),
+    );
+  }
+
+  Widget _pin() {
+    return SizedBox.square(
+      dimension: pinSize,
       child: Container(
         decoration: BoxDecoration(
           color: color,
@@ -1035,25 +1115,86 @@ class _UserDot extends StatelessWidget {
 /// A circular map overlay button (e.g. "my location").
 class _MapButton extends StatelessWidget {
   final IconData icon;
+  final String label;
   final VoidCallback onTap;
 
-  const _MapButton({required this.icon, required this.onTap});
+  const _MapButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surface.withValues(alpha: 0.95),
-      shape: const CircleBorder(),
-      elevation: 2,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(11),
-          child: Icon(icon, color: cs.primary, size: 22),
+    return Tooltip(
+      message: label,
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        label: label,
+        excludeSemantics: true,
+        child: Material(
+          color: cs.surface.withValues(alpha: 0.95),
+          shape: const CircleBorder(),
+          elevation: 2,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(11),
+              child: Icon(icon, color: cs.primary, size: 22),
+            ),
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// A short-lived pulsing ring marking the spot [MapTabState.focusLocation]
+/// moved to.
+class _FocusRing extends StatefulWidget {
+  const _FocusRing();
+
+  @override
+  State<_FocusRing> createState() => _FocusRingState();
+}
+
+class _FocusRingState extends State<_FocusRing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final t = _c.value;
+        return Center(
+          child: Container(
+            width: 28 + 36 * t,
+            height: 28 + 36 * t,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: color.withValues(alpha: 1 - t),
+                width: 3,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1133,7 +1274,10 @@ class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
   }
 
   Marker _cameraMarker(TrafficCamera cam, ThumbnailSize? size, int? bucket) {
-    const pin = _CameraMarker.pinSize;
+    const pin = _CameraMarker.hitSize;
+    final label = cam.title.trim().isEmpty
+        ? 'Prometna kamera'
+        : 'Kamera ${cam.title.trim()}';
     final thumb = size != null && bucket != null && cam.imageUrl.isNotEmpty
         ? cam.imageUrlWithBuster(bucket)
         : null;
@@ -1143,10 +1287,13 @@ class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
         point: cam.position,
         width: pin,
         height: pin,
-        child: _CameraMarker(onTap: () => showCameraSheet(context, cam)),
+        child: _CameraMarker(
+          label: label,
+          onTap: () => showCameraSheet(context, cam),
+        ),
       );
     }
-    final width = size.width;
+    final width = math.max(size.width, pin);
     final height = size.extent + pin;
     return Marker(
       key: ValueKey('cam:${cam.id}'),
@@ -1161,6 +1308,7 @@ class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
         top: height - pin / 2,
       ),
       child: _CameraMarker(
+        label: label,
         thumbnailUrl: thumb,
         thumbnailSize: size,
         onTap: () => showCameraSheet(context, cam),
@@ -1218,10 +1366,13 @@ class _BurjaLayer extends StatelessWidget {
           Marker(
             key: ValueKey('burja:${st.id}'),
             point: st.position,
-            width: 28,
-            height: 28,
+            width: _minPinHitSize,
+            height: _minPinHitSize,
             child: _BurjaMarker(
               color: burjaColor(st.level),
+              label:
+                  '${st.title.trim().isEmpty ? 'Burja' : 'Burja ${st.title.trim()}'}'
+                  ', sunki ${st.gust.round()} km/h',
               onTap: () => showBurjaSheet(context, st),
             ),
           ),
@@ -1348,10 +1499,11 @@ class _EventsLayerState extends State<_EventsLayer> {
           Marker(
             key: ValueKey('ev:${event.id}'),
             point: event.position,
-            width: 28,
-            height: 28,
+            width: _minPinHitSize,
+            height: _minPinHitSize,
             child: EventMarker(
               event: event,
+              hitSize: _minPinHitSize,
               onTap: () => showEventSheet(context, event),
             ),
           ),
