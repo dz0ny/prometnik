@@ -1,7 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../models/weather_station.dart';
 import '../theme/app_theme.dart';
+import 'webcam_thumbnail.dart';
 
 /// A map pin that shows a station's temperature in a coloured label with a
 /// downward pointer anchored to the exact location. Camera-only stations
@@ -13,18 +13,18 @@ class TemperatureMarker extends StatelessWidget {
   final WeatherStation station;
   final VoidCallback onTap;
 
-  /// When set (zoomed in), a small live webcam frame sits above the pill.
+  /// When set (zoomed in), a live webcam frame sits above the pill.
   final String? thumbnailUrl;
 
-  /// Extra marker height a thumbnail needs (frame + gap).
-  static const double thumbnailHeight = 54;
-  static const double thumbnailWidth = 80;
+  /// Size of that frame; the Marker must grow by [ThumbnailSize.extent].
+  final ThumbnailSize thumbnailSize;
 
   const TemperatureMarker({
     super.key,
     required this.station,
     required this.onTap,
     this.thumbnailUrl,
+    this.thumbnailSize = ThumbnailSize.small,
   });
 
   @override
@@ -53,8 +53,8 @@ class TemperatureMarker extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (thumbnailUrl != null) ...[
-              _Thumbnail(url: thumbnailUrl!),
-              const SizedBox(height: 4),
+              WebcamThumbnail.sized(thumbnailUrl!, thumbnailSize),
+              const SizedBox(height: WebcamThumbnail.gap),
             ],
             Container(
               padding: isCamera
@@ -114,45 +114,6 @@ class TemperatureMarker extends StatelessWidget {
     return hsl
         .withLightness((hsl.lightness + amount).clamp(0.0, 1.0))
         .toColor();
-  }
-}
-
-/// A small webcam frame shown above the pill when zoomed in.
-class _Thumbnail extends StatelessWidget {
-  final String url;
-
-  const _Thumbnail({required this.url});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: TemperatureMarker.thumbnailWidth,
-      height: TemperatureMarker.thumbnailHeight - 4,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white, width: 1.5),
-        boxShadow: const [
-          BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 2)),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(6.5),
-        child: CachedNetworkImage(
-          imageUrl: url,
-          cacheKey: url,
-          // Decode at thumbnail size (3x for retina), not the full frame.
-          memCacheWidth: 240,
-          useOldImageOnUrlChange: true,
-          fit: BoxFit.cover,
-          fadeInDuration: const Duration(milliseconds: 150),
-          placeholder: (_, _) => const SizedBox.shrink(),
-          errorWidget: (_, _, _) => const Center(
-            child: Icon(Icons.videocam_off, size: 16, color: Colors.white54),
-          ),
-        ),
-      ),
-    );
   }
 }
 

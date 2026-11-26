@@ -30,6 +30,7 @@ import '../widgets/filter_sheet.dart';
 import '../widgets/rest_area_sheet.dart';
 import '../widgets/station_sheet.dart';
 import '../widgets/temperature_marker.dart';
+import '../widgets/webcam_thumbnail.dart';
 
 /// Map tab: shows every station as a coloured temperature marker over Slovenia.
 class MapTab extends StatefulWidget {
@@ -52,8 +53,13 @@ class MapTabState extends State<MapTab> {
   bool _mapReady = false;
 
   /// Zoom from which weather pins also show a mini webcam frame.
+  /// Frames grow with zoom (see [ThumbnailSize.forZoom]); null = none.
   static const double _thumbnailZoom = 11;
-  bool _showThumbnails = false;
+  ThumbnailSize? _thumbnailSize;
+
+  /// DARS cameras are far denser, so their frames need a closer zoom.
+  static const double _cameraThumbnailZoom = 13;
+  ThumbnailSize? _cameraThumbnailSize;
 
   // Base map tiles: OpenStreetMap or Seznam (Mapy.cz), as in gozdar.
   BaseMap _baseMap = BaseMap.saved;
@@ -542,15 +548,8 @@ class MapTabState extends State<MapTab> {
     }
   }
 
-  void _openStation(WeatherStation station) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => StationSheet(stationId: station.stationId),
-    );
-  }
+  void _openStation(WeatherStation station) =>
+      showStationSheet(context, station.stationId);
 
   @override
   Widget build(BuildContext context) {
@@ -584,12 +583,23 @@ class MapTabState extends State<MapTab> {
                     flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                   ),
                   onMapReady: () => _mapReady = true,
-                  // Only rebuild when crossing the thumbnail threshold, not
+                  // Only rebuild when crossing a thumbnail threshold, not
                   // on every pan/zoom frame.
                   onPositionChanged: (camera, _) {
-                    final show = camera.zoom >= _thumbnailZoom;
-                    if (show != _showThumbnails) {
-                      setState(() => _showThumbnails = show);
+                    final size = ThumbnailSize.forZoom(
+                      camera.zoom,
+                      minZoom: _thumbnailZoom,
+                    );
+                    final camSize = ThumbnailSize.forZoom(
+                      camera.zoom,
+                      minZoom: _cameraThumbnailZoom,
+                    );
+                    if (size != _thumbnailSize ||
+                        camSize != _cameraThumbnailSize) {
+                      setState(() {
+                        _thumbnailSize = size;
+                        _cameraThumbnailSize = camSize;
+                      });
                     }
                   },
                 ),
@@ -606,14 +616,15 @@ class MapTabState extends State<MapTab> {
                         polylines: _eventRoads,
                       ),
                     ),
-                  if (_showDarsCameras) const _DarsCamerasLayer(),
+                  if (_showDarsCameras)
+                    _DarsCamerasLayer(thumbnailSize: _cameraThumbnailSize),
                   if (_showRestAreas)
                     _RestAreasLayer(onTapGroup: _openRestAreaGroup),
                   if (_showBurja) const _BurjaLayer(),
                   _WeatherStationsLayer(
                     showWeather: _showWeather,
                     showCameras: _showCameras,
-                    showThumbnails: _showThumbnails,
+                    thumbnailSize: _thumbnailSize,
                     onTap: _openStation,
                   ),
                   // DRSI road stations sit above the weather pins, which
@@ -717,17 +728,42 @@ class MapTabState extends State<MapTab> {
   }
 }
 
-/// A small circular pin for a DARS camera.
+/// A small circular pin for a DARS camera. When [thumbnailUrl] is set
+/// (zoomed in), a live webcam frame sits above the pin.
 class _CameraMarker extends StatelessWidget {
   final VoidCallback onTap;
+  final String? thumbnailUrl;
+  final ThumbnailSize thumbnailSize;
 
-  const _CameraMarker({required this.onTap});
+  static const double pinSize = 26;
+
+  const _CameraMarker({
+    required this.onTap,
+    this.thumbnailUrl,
+    this.thumbnailSize = ThumbnailSize.medium,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (thumbnailUrl != null) ...[
+            WebcamThumbnail.sized(thumbnailUrl!, thumbnailSize),
+            const SizedBox(height: WebcamThumbnail.gap),
+          ],
+          _pin(),
+        ],
+      ),
+    );
+  }
+
+  Widget _pin() {
+    return SizedBox.square(
+      dimension: pinSize,
       child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF455A64),
@@ -1035,15 +1071,23 @@ class _Memo<A, B, R> {
 }
 
 class _DarsCamerasLayer extends StatefulWidget {
-  const _DarsCamerasLayer();
+  /// Thumbnail tier for the current zoom, or null for plain pins.
+  final ThumbnailSize? thumbnailSize;
+  const _DarsCamerasLayer({required this.thumbnailSize});
 
   @override
   State<_DarsCamerasLayer> createState() => _DarsCamerasLayerState();
 }
 
 class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
-  final _memo =
-      _Memo<List<TrafficCamera>, List<WeatherStation>, List<Marker>>();
+  final _visibleMemo =
+      _Memo<List<TrafficCamera>, List<WeatherStation>, List<TrafficCamera>>();
+  // Markers are rebuilt only when the visible list, the thumbnail tier or
+  // the 5-minute frame bucket changes, not on every build.
+  List<TrafficCamera>? _markersFor;
+  ThumbnailSize? _markersSize;
+  int? _markersBucket;
+  List<Marker> _markers = const [];
 
   @override
   Widget build(BuildContext context) {
@@ -1055,20 +1099,56 @@ class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
     );
     // De-duplicating against weather-station cameras is O(cameras*stations);
     // do it once per data refresh, not on every build.
-    final markers = _memo(
+    final visible = _visibleMemo(
       cameras,
       stations,
-      (_, st) => [
-        for (final cam in context.read<CamerasProvider>().visibleCameras(st))
-          Marker(
-            point: cam.position,
-            width: 26,
-            height: 26,
-            child: _CameraMarker(onTap: () => showCameraSheet(context, cam)),
-          ),
-      ],
+      (_, st) => context.read<CamerasProvider>().visibleCameras(st),
     );
-    return MarkerLayer(markers: markers);
+    final size = widget.thumbnailSize;
+    final bucket = size != null ? webcamCacheBucket() : null;
+    if (!identical(visible, _markersFor) ||
+        size != _markersSize ||
+        bucket != _markersBucket) {
+      _markersFor = visible;
+      _markersSize = size;
+      _markersBucket = bucket;
+      _markers = [for (final cam in visible) _cameraMarker(cam, size, bucket)];
+    }
+    return MarkerLayer(markers: _markers);
+  }
+
+  Marker _cameraMarker(TrafficCamera cam, ThumbnailSize? size, int? bucket) {
+    const pin = _CameraMarker.pinSize;
+    final thumb = size != null && bucket != null && cam.imageUrl.isNotEmpty
+        ? cam.imageUrlWithBuster(bucket)
+        : null;
+    if (thumb == null || size == null) {
+      return Marker(
+        point: cam.position,
+        width: pin,
+        height: pin,
+        child: _CameraMarker(onTap: () => showCameraSheet(context, cam)),
+      );
+    }
+    final width = size.width;
+    final height = size.extent + pin;
+    return Marker(
+      point: cam.position,
+      width: width,
+      height: height,
+      // Keep the pin's centre (not the box centre) on the coordinate.
+      alignment: Marker.computePixelAlignment(
+        width: width,
+        height: height,
+        left: width / 2,
+        top: height - pin / 2,
+      ),
+      child: _CameraMarker(
+        thumbnailUrl: thumb,
+        thumbnailSize: size,
+        onTap: () => showCameraSheet(context, cam),
+      ),
+    );
   }
 }
 
@@ -1134,13 +1214,14 @@ class _BurjaLayer extends StatelessWidget {
 class _WeatherStationsLayer extends StatelessWidget {
   final bool showWeather;
   final bool showCameras;
-  final bool showThumbnails;
+  /// Thumbnail tier for the current zoom, or null for plain pins.
+  final ThumbnailSize? thumbnailSize;
   final void Function(WeatherStation) onTap;
 
   const _WeatherStationsLayer({
     required this.showWeather,
     required this.showCameras,
-    required this.showThumbnails,
+    required this.thumbnailSize,
     required this.onTap,
   });
 
@@ -1150,7 +1231,7 @@ class _WeatherStationsLayer extends StatelessWidget {
       (p) => p.stations,
     );
     // Frames refresh in 5-minute steps so rebuilds reuse the cached image.
-    final bucket = DateTime.now().millisecondsSinceEpoch ~/ 300000 * 300000;
+    final bucket = webcamCacheBucket();
     return MarkerLayer(
       markers: [
         for (final station in stations)
@@ -1161,19 +1242,22 @@ class _WeatherStationsLayer extends StatelessWidget {
   }
 
   Marker _stationMarker(WeatherStation station, int bucket) {
-    final thumb = showThumbnails && station.cameraLink.isNotEmpty
+    final size = thumbnailSize;
+    final thumb = size != null && station.cameraLink.isNotEmpty
         ? station.cameraUrlWithBuster(bucket)
         : null;
     return Marker(
       point: station.position,
-      width: thumb != null
-          ? TemperatureMarker.thumbnailWidth
+      width: thumb != null && size != null
+          ? size.width
           : (station.hasWeather ? 60 : 34),
-      height: 44 + (thumb != null ? TemperatureMarker.thumbnailHeight : 0),
+      height: 44 + (thumb != null && size != null ? size.extent : 0),
+      // Bottom of the box (the pointer tip) sits on the coordinate.
       alignment: Alignment.topCenter,
       child: TemperatureMarker(
         station: station,
         thumbnailUrl: thumb,
+        thumbnailSize: size ?? ThumbnailSize.small,
         onTap: () => onTap(station),
       ),
     );
