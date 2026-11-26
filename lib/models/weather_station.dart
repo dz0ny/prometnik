@@ -1,5 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
+import '../services/webcam_proxy.dart';
+
 /// Live weather reading for a station (from the `weather` object of the
 /// `/Vremenske/Vreme/KamereInVreme` endpoint). May be absent for camera-only
 /// stations.
@@ -81,9 +83,7 @@ class WeatherStation {
 
   /// Cache-busting camera URL so each refresh fetches a fresh frame.
   String cameraUrlWithBuster(int epochMillis) {
-    if (cameraLink.isEmpty) return cameraLink;
-    final sep = cameraLink.contains('?') ? '&' : '?';
-    return '$cameraLink${sep}t=$epochMillis';
+    return proxiedWebcamUrl(cameraLink, buster: epochMillis);
   }
 
   factory WeatherStation.fromJson(Map<String, dynamic> json) {

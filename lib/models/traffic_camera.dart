@@ -1,5 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
+import '../services/webcam_proxy.dart';
+
 /// A DARS traffic camera from the promet.si data channel `agg.kamere.v2`.
 class TrafficCamera {
   final String id;
@@ -23,13 +25,12 @@ class TrafficCamera {
 
   /// Cache-busting image URL so each refresh fetches a fresh frame.
   String imageUrlWithBuster(int epochMillis) {
-    if (imageUrl.isEmpty) return imageUrl;
-    final sep = imageUrl.contains('?') ? '&' : '?';
-    return '$imageUrl${sep}t=$epochMillis';
+    return proxiedWebcamUrl(imageUrl, buster: epochMillis);
   }
 
   factory TrafficCamera.fromFeature(Map<String, dynamic> feature) {
-    final props = (feature['properties'] as Map?)?.cast<String, dynamic>() ?? {};
+    final props =
+        (feature['properties'] as Map?)?.cast<String, dynamic>() ?? {};
     final geom = (feature['geometry'] as Map?)?.cast<String, dynamic>() ?? {};
 
     LatLng parsePoint(Map<String, dynamic> g) {

@@ -1,5 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
+import '../services/webcam_proxy.dart';
+
 /// Road-condition risk at a DRSI road weather station, worst last.
 enum RoadRisk { ok, caution, slippery, ice }
 
@@ -91,9 +93,7 @@ class DrsiStation {
   }
 
   String cameraUrlWithBuster(int epochMillis) {
-    if (webcamUrl.isEmpty) return webcamUrl;
-    final sep = webcamUrl.contains('?') ? '&' : '?';
-    return '$webcamUrl${sep}t=$epochMillis';
+    return proxiedWebcamUrl(webcamUrl, buster: epochMillis);
   }
 
   /// Parses one DataTable row (`{"c": [{"v": ...}, ...]}`) using the column

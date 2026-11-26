@@ -59,7 +59,7 @@ void main() {
       expect(station.position.longitude, closeTo(15.489224, 1e-3));
     });
 
-    test('cache-busting URL appends a timestamp param', () {
+    test('cache-busting URL appends a timestamp param for unknown hosts', () {
       final station = WeatherStation.fromJson({
         'stationId': 1,
         'name': 'X',
@@ -69,7 +69,26 @@ void main() {
         'weather': null,
       });
 
-      expect(station.cameraUrlWithBuster(123), contains('?t=123'));
+      expect(
+        station.cameraUrlWithBuster(123),
+        'https://example.com/cam.jpg?t=123',
+      );
+    });
+
+    test('camera URL on a known host goes through the edge cache', () {
+      final station = WeatherStation.fromJson({
+        'stationId': 1,
+        'name': 'X',
+        'coordinateX': 46.0,
+        'coordinateY': 14.0,
+        'cameraLink': 'https://kamere.dars.si/kamere/x.jpg',
+        'weather': null,
+      });
+
+      final uri = Uri.parse(station.cameraUrlWithBuster(123));
+      expect(uri.host, 'prometnik-cams.dz0ny.workers.dev');
+      expect(uri.queryParameters['u'], 'https://kamere.dars.si/kamere/x.jpg');
+      expect(uri.queryParameters['t'], '123');
     });
   });
 }
