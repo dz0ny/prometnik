@@ -17,6 +17,7 @@ import {
   captureSlice,
   handleHistory,
   handleSnap,
+  handleStatus,
   latestSnapshot,
   storeHourly,
 } from './snapshots.js';
@@ -106,6 +107,7 @@ export default {
     }
     if (url.pathname === '/history') return handleHistory(url, env);
     if (url.pathname === '/snap') return handleSnap(url, env);
+    if (url.pathname === '/status') return handleStatus(env);
     if (url.pathname !== '/cam') {
       return new Response('Not found', { status: 404 });
     }

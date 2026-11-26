@@ -70,6 +70,32 @@ export function camerasFromFeeds(bodies) {
   return [...urls];
 }
 
+/** GET /status — whether the camera feeds are reachable from the worker. */
+export async function handleStatus(env) {
+  const feeds = await Promise.all(
+    CAMERA_FEEDS.map(async (feed) => {
+      try {
+        const res = await fetch(feed, {
+          headers: { 'User-Agent': 'prometnik-cams/1.0' },
+          signal: AbortSignal.timeout(15000),
+        });
+        const body = await res.text();
+        return { feed, status: res.status, cameras: camerasFromFeeds([body]).length };
+      } catch (err) {
+        return { feed, error: err.message };
+      }
+    }),
+  );
+  let lastRun = null;
+  try {
+    const obj = await env.SNAPS.get('meta/last-run.json');
+    if (obj) lastRun = await obj.json();
+  } catch {
+    // no run recorded yet
+  }
+  return json({ lastRun, feeds }, 200);
+}
+
 async function listCameras() {
   const bodies = await Promise.all(
     CAMERA_FEEDS.map(async (feed) => {
@@ -121,6 +147,25 @@ export async function latestSnapshot(env, camUrl, now = new Date()) {
 /** Cron handler: snapshot this run's slice of cameras into R2. */
 export async function captureSlice(env, scheduledTime, fetchFrame) {
   const now = new Date(scheduledTime);
+  try {
+    const result = await captureSliceInner(env, now, fetchFrame);
+    await recordRun(env, { at: now.toISOString(), ok: true, ...result });
+  } catch (err) {
+    await recordRun(env, { at: now.toISOString(), ok: false, error: String(err) });
+    throw err;
+  }
+}
+
+/** Last cron outcome, shown by /status. */
+async function recordRun(env, run) {
+  try {
+    await env.SNAPS.put('meta/last-run.json', JSON.stringify(run));
+  } catch (err) {
+    console.warn(`recordRun: ${err.message}`);
+  }
+}
+
+async function captureSliceInner(env, now, fetchFrame) {
   const slice = now.getUTCMinutes() % SLICES;
   const stamp = hourStamp(now);
   const cameras = await listCameras();
@@ -156,6 +201,7 @@ export async function captureSlice(env, scheduledTime, fetchFrame) {
   console.log(
     `slice ${slice} @${stamp}: ${mine.length} cameras, ${stored} stored, ${failed} failed (of ${cameras.length} total)`,
   );
+  return { slice, stamp, cameras: mine.length, stored, failed, total: cameras.length };
 }
 
 /** GET /history?u=… */
