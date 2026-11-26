@@ -29,4 +29,14 @@ void main() {
     expect(a, endsWith('2026112621'));
     expect(latestKey(cam), isNot(a));
   });
+
+  test(
+    'proxied URLs fall back to the camera itself, others have no fallback',
+    () {
+      final proxied = proxiedWebcamUrl(cam, buster: 1);
+      expect(directWebcamUrl(proxied, buster: 7), '$cam?t=7');
+      expect(directWebcamUrl('$cam?t=1'), isNull);
+      expect(directWebcamUrl('https://example.com/a.jpg'), isNull);
+    },
+  );
 }

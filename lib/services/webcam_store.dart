@@ -116,6 +116,24 @@ class WebcamStore {
 
   Future<WebcamFrame?> _download(String url) async {
     final key = cameraKey(url);
+    // The edge cache answers first; the camera itself is only a fallback for
+    // when the proxy is unreachable or failing.
+    var bytes = await _getImage(url, key);
+    final direct = directWebcamUrl(url);
+    if (bytes == null && direct != null) {
+      debugPrint('WebcamStore: proxy failed for $key, trying the camera');
+      bytes = await _getImage(direct, key);
+    }
+    if (bytes == null) return null;
+    final now = DateTime.now();
+    final frame = WebcamFrame(bytes, now);
+    _remember(key, frame);
+    _lastFetch[key] = now;
+    unawaited(_persist(key, frame));
+    return frame;
+  }
+
+  Future<Uint8List?> _getImage(String url, String key) async {
     try {
       final res = await _http.get(Uri.parse(url)).timeout(_timeout);
       final type = res.headers['content-type'] ?? '';
@@ -123,12 +141,7 @@ class WebcamStore {
         debugPrint('WebcamStore: $key answered ${res.statusCode} $type');
         return null;
       }
-      final now = DateTime.now();
-      final frame = WebcamFrame(res.bodyBytes, now);
-      _remember(key, frame);
-      _lastFetch[key] = now;
-      unawaited(_persist(key, frame));
-      return frame;
+      return res.bodyBytes;
     } on Exception catch (e) {
       debugPrint('WebcamStore.fetch($key): $e');
       return null;
@@ -383,4 +396,16 @@ String latestKey(String cameraKey) => 'latest|$cameraKey';
 String hourlyKey(String cameraKey, DateTime at) {
   String two(int n) => n.toString().padLeft(2, '0');
   return 'hour|$cameraKey|${at.year}${two(at.month)}${two(at.day)}${two(at.hour)}';
+}
+
+/// For a URL that goes through the edge proxy, the camera's own URL (with a
+/// fresh cache-buster) to fall back to; null when [url] isn't proxied.
+String? directWebcamUrl(String url, {int? buster}) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.host != webcamProxyHost) return null;
+  final original = uri.queryParameters['u'];
+  if (original == null || original.isEmpty) return null;
+  final t = buster ?? DateTime.now().millisecondsSinceEpoch;
+  final sep = original.contains('?') ? '&' : '?';
+  return '$original${sep}t=$t';
 }
