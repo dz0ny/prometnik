@@ -73,14 +73,19 @@ TileLayer buildBaseTileLayer(
   );
 }
 
-/// Attribution for [base], collapsed behind an info button.
+/// Attribution for [base], collapsed behind an info button. [bottomInset]
+/// lifts it above overlays such as the floating iOS tab bar.
 Widget buildBaseMapAttribution(
   BaseMap base, {
   AttributionAlignment alignment = AttributionAlignment.bottomLeft,
+  double bottomInset = 0,
 }) {
-  return RichAttributionWidget(
-    alignment: alignment,
-    showFlutterMapAttribution: false,
-    attributions: [TextSourceAttribution(base.attribution)],
+  return Padding(
+    padding: EdgeInsets.only(bottom: bottomInset),
+    child: RichAttributionWidget(
+      alignment: alignment,
+      showFlutterMapAttribution: false,
+      attributions: [TextSourceAttribution(base.attribution)],
+    ),
   );
 }

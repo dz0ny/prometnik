@@ -19,6 +19,7 @@ import '../providers/rest_areas_provider.dart';
 import '../providers/weather_provider.dart';
 import '../services/prefs.dart';
 import '../services/roads_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/base_tile_layer.dart';
 import '../widgets/burja_sheet.dart';
 import '../widgets/drsi_sheet.dart';
@@ -637,7 +638,10 @@ class MapTabState extends State<MapTab> {
                     onVisibleChanged: _onVisibleEventsChanged,
                   ),
                   const _UserLocationLayer(),
-                  buildBaseMapAttribution(_baseMap),
+                  buildBaseMapAttribution(
+                    _baseMap,
+                    bottomInset: AppTheme.bottomBarContentInset(context),
+                  ),
                 ],
               ),
               if (showWeatherError)
@@ -654,11 +658,19 @@ class MapTabState extends State<MapTab> {
                   ),
                 ),
               ),
+              // Keep the map buttons above the floating iOS tab bar, not just
+              // the safe area (it covered the my-location button).
               SafeArea(
+                bottom: AppTheme.bottomBarContentInset(context) == 0,
                 child: Align(
                   alignment: Alignment.bottomRight,
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      12,
+                      12,
+                      12 + AppTheme.bottomBarContentInset(context),
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
