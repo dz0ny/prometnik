@@ -45,6 +45,11 @@ export function cameraUrl(raw) {
   if (!ALLOWED_HOSTS.has(url.hostname)) return null;
   url.searchParams.delete('t'); // app cache-buster, not part of the frame
   url.hash = '';
+  // One identity per camera: feeds list the same picture as http and https,
+  // and as drsc.si and www.drsc.si. Without this each variant would get its
+  // own cache entry and its own hourly history.
+  url.protocol = 'https:';
+  if (url.hostname === 'drsc.si') url.hostname = 'www.drsc.si';
   return url;
 }
 
@@ -81,7 +86,7 @@ export async function fetchFrame(cam) {
 }
 
 export default {
-  // Hourly history: every 5 minutes snapshot one slice of the cameras.
+  // Hourly history: every minute snapshot one slice of the cameras.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(captureSlice(env, event.scheduledTime, fetchFrame));
   },

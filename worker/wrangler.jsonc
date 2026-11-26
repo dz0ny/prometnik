@@ -7,8 +7,8 @@
   "workers_dev": true,
   "observability": { "enabled": true },
   // Hourly webcam history (see src/snapshots.js): each run snapshots one
-  // twelfth of the cameras, so every camera gets one frame per hour.
-  "triggers": { "crons": ["*/5 * * * *"] },
+  // sixtieth of the cameras, so every camera gets one frame per hour.
+  "triggers": { "crons": ["* * * * *"] },
   // Frames expire via a bucket lifecycle rule (2 days).
   "r2_buckets": [{ "binding": "SNAPS", "bucket_name": "prometnik-cams" }]
 }

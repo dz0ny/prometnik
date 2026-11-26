@@ -5,7 +5,11 @@ import { cameraUrl, cacheKeys } from '../src/index.js';
 test('accepts known camera hosts and drops the app cache-buster', () => {
   const u = cameraUrl('https://kamere.dars.si/kamere/x/Cam_0001.jpg?t=123');
   assert.equal(u.toString(), 'https://kamere.dars.si/kamere/x/Cam_0001.jpg');
-  assert.ok(cameraUrl('http://www.drsc.si/kamere/Neblo/Neb1_0001.jpg'));
+  // http/https and drsc.si/www.drsc.si are the same camera.
+  assert.equal(
+    cameraUrl('http://drsc.si/kamere/Neblo/Neb1_0001.jpg').toString(),
+    cameraUrl('https://www.drsc.si/kamere/Neblo/Neb1_0001.jpg?t=5').toString(),
+  );
 });
 
 test('rejects other hosts and schemes (no open proxy)', () => {

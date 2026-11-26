@@ -1,6 +1,6 @@
 // Hourly webcam history.
 //
-// A cron runs every 5 minutes and snapshots one twelfth of all cameras
+// A cron runs every minute and snapshots one sixtieth of all cameras
 // (each camera always falls in the same slice), so every camera gets exactly
 // one frame per hour. Frames live in R2 under h/<camera id>/<YYYYMMDDHH>.jpg
 // (UTC hour); a bucket lifecycle rule deletes them after 2 days.
@@ -10,9 +10,11 @@
 
 import { cameraUrl } from './index.js';
 
-export const SLICES = 12; // cron every 5 minutes → 12 runs per hour
+// Cron runs every minute; each run handles one of 60 slices (~10 cameras),
+// which keeps a run well under the Workers per-invocation subrequest limit.
+export const SLICES = 60;
 const HISTORY_HOURS = 24;
-const CONCURRENCY = 8;
+const CONCURRENCY = 5;
 
 const CAMERA_FEEDS = [
   // DARS traffic cameras (GeoJSON, properties.Image).
@@ -119,7 +121,7 @@ export async function latestSnapshot(env, camUrl, now = new Date()) {
 /** Cron handler: snapshot this run's slice of cameras into R2. */
 export async function captureSlice(env, scheduledTime, fetchFrame) {
   const now = new Date(scheduledTime);
-  const slice = Math.floor(now.getUTCMinutes() / 5) % SLICES;
+  const slice = now.getUTCMinutes() % SLICES;
   const stamp = hourStamp(now);
   const cameras = await listCameras();
 
