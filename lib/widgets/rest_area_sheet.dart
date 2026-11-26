@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/rest_area.dart';
 import 'sheet_snack.dart';
+import 'app_sheet.dart';
 
 const _amenityIcons = <String, (IconData, String)>{
   'fuel': (Icons.local_gas_station, 'Bencin'),
@@ -29,13 +30,7 @@ Color restAreaColor(RestArea area) {
 }
 
 void showRestAreaSheet(BuildContext context, RestArea area) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    useRootNavigator: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => _RestAreaSheet(area: area),
-  );
+  showAppSheet<void>(context, builder: (_) => _RestAreaSheet(area: area));
 }
 
 class _RestAreaSheet extends StatelessWidget {
@@ -76,138 +71,112 @@ class _RestAreaSheet extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final color = restAreaColor(area);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+    return AppSheet(
+      children: [
+        Row(
           children: [
-            Center(
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                width: 44,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: cs.outline,
-                  borderRadius: BorderRadius.circular(3),
+            Icon(Icons.local_parking, color: cs.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                area.title.isEmpty ? 'Počivališče' : area.title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
-            Row(
-              children: [
-                Icon(Icons.local_parking, color: cs.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    area.title.isEmpty ? 'Počivališče' : area.title,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Navigacija',
-                  icon: const Icon(Icons.directions),
-                  onPressed: () => _openDirections(context),
-                ),
-              ],
+            IconButton(
+              tooltip: 'Navigacija',
+              icon: const Icon(Icons.directions),
+              onPressed: () => _openDirections(context),
             ),
-            if (area.locationDescription.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                area.locationDescription,
-                style: TextStyle(color: cs.onSurfaceVariant, height: 1.3),
-              ),
-            ],
-            const SizedBox(height: 16),
-            // Live availability.
-            if (area.hasLiveAvailability) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: color.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.local_parking, color: color, size: 32),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${area.available} / ${area.total} prostih',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          if (area.availabilityText.isNotEmpty)
-                            Text(
-                              area.availabilityText,
-                              style: TextStyle(color: cs.onSurfaceVariant),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            // Static capacity.
-            // Wrap: long working hours or large text would overflow a Row.
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _capChip(cs, Icons.directions_car, '${area.carSpaces} avto'),
-                _capChip(
-                  cs,
-                  Icons.local_shipping,
-                  '${area.truckSpaces} tovornih',
-                ),
-                if (area.workingHours.isNotEmpty)
-                  _capChip(cs, Icons.schedule, area.workingHours),
-              ],
-            ),
-            if (area.amenities.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text(
-                'PONUDBA',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final a in _amenityIcons.entries)
-                    if (area.amenities.contains(a.key))
-                      Chip(
-                        avatar: Icon(a.value.$1, size: 18, color: cs.primary),
-                        label: Text(a.value.$2),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                ],
-              ),
-            ],
           ],
         ),
-      ),
+        if (area.locationDescription.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            area.locationDescription,
+            style: TextStyle(color: cs.onSurfaceVariant, height: 1.3),
+          ),
+        ],
+        const SizedBox(height: 16),
+        // Live availability.
+        if (area.hasLiveAvailability) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.local_parking, color: color, size: 32),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${area.available} / ${area.total} prostih',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (area.availabilityText.isNotEmpty)
+                        Text(
+                          area.availabilityText,
+                          style: TextStyle(color: cs.onSurfaceVariant),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        // Static capacity.
+        // Wrap: long working hours or large text would overflow a Row.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _capChip(cs, Icons.directions_car, '${area.carSpaces} avto'),
+            _capChip(cs, Icons.local_shipping, '${area.truckSpaces} tovornih'),
+            if (area.workingHours.isNotEmpty)
+              _capChip(cs, Icons.schedule, area.workingHours),
+          ],
+        ),
+        if (area.amenities.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'PONUDBA',
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final a in _amenityIcons.entries)
+                if (area.amenities.contains(a.key))
+                  Chip(
+                    avatar: Icon(a.value.$1, size: 18, color: cs.primary),
+                    label: Text(a.value.$2),
+                    visualDensity: VisualDensity.compact,
+                  ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 

@@ -20,17 +20,12 @@ import 'event_visuals.dart';
 import 'weather_details.dart' show WeatherFormat;
 import 'sheet_snack.dart';
 import '../theme/app_theme.dart';
+import 'app_sheet.dart';
 
 /// Present [event] details in a modal bottom sheet. Shared by the map markers
 /// and the events list.
 void showEventSheet(BuildContext context, TrafficEvent event) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    useRootNavigator: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => EventSheet(event: event),
-  );
+  showAppSheet<void>(context, builder: (_) => EventSheet(event: event));
 }
 
 class EventSheet extends StatelessWidget {
@@ -66,90 +61,52 @@ class EventSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.3,
-      maxChildSize: 0.92,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+    return AppSheet(
+      children: [
+        _Hero(event: event),
+        const SizedBox(height: 14),
+        EventMiniMap(event: event),
+        const SizedBox(height: 16),
+        EventNearbyCamerasSection(event: event),
+        if (event.description.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            event.description,
+            style: TextStyle(color: cs.onSurface, height: 1.4, fontSize: 15),
           ),
-          child: ListView(
-            controller: scrollController,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+        ],
+        const SizedBox(height: 16),
+        _StatGrid(event: event),
+        if (event.noticeText.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Row(
             children: [
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: cs.outline,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
+              Icon(Icons.account_balance, size: 15, color: cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Vir: ${event.noticeText}',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
                 ),
               ),
-              _Hero(event: event),
-              const SizedBox(height: 14),
-              EventMiniMap(event: event),
-              const SizedBox(height: 16),
-              EventNearbyCamerasSection(event: event),
-              if (event.description.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Text(
-                  event.description,
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    height: 1.4,
-                    fontSize: 15,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              _StatGrid(event: event),
-              if (event.noticeText.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.account_balance,
-                      size: 15,
-                      color: cs.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Vir: ${event.noticeText}',
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              if (event.infoUrl.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                AdaptiveButton.child(
-                  onPressed: () => _openInfo(context),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.open_in_new, size: 18),
-                      SizedBox(width: 8),
-                      Text('Več informacij'),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
-        );
-      },
+        ],
+        if (event.infoUrl.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          AdaptiveButton.child(
+            onPressed: () => _openInfo(context),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.open_in_new, size: 18),
+                SizedBox(width: 8),
+                Text('Več informacij'),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

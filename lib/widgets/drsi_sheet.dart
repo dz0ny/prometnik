@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/drsi_station.dart';
 import '../theme/app_theme.dart';
+import 'app_sheet.dart';
 
 const _riskColors = <RoadRisk, Color>{
   RoadRisk.ok: Color(0xFF43A047),
@@ -38,13 +39,7 @@ String _t(double? v, {int digits = 1}) =>
     v == null ? '–' : '${v.toStringAsFixed(digits)} °C';
 
 void showDrsiSheet(BuildContext context, DrsiStation station) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    useRootNavigator: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => _DrsiSheet(station: station),
-  );
+  showAppSheet<void>(context, builder: (_) => _DrsiSheet(station: station));
 }
 
 /// Map pin: road surface temperature on a pill tinted by [RoadRisk].
@@ -124,182 +119,134 @@ class _DrsiSheet extends StatelessWidget {
       DateTime.now().millisecondsSinceEpoch ~/ 60000,
     );
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          children: [
-            Center(
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                width: 44,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: cs.outline,
-                  borderRadius: BorderRadius.circular(3),
+    return AppSheet(
+      title: station.name.isEmpty ? 'Cestna postaja' : station.name,
+      subtitle: [
+        'Cestna postaja DRSI',
+        if (at != null) DateFormat('d. M. yyyy, HH:mm').format(at),
+      ].join(' · '),
+      leading: Icon(Icons.add_road, color: color),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: 0.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _riskLabels[risk]!,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.readableText(
+                    color,
+                    Theme.of(context).brightness,
+                  ),
                 ),
               ),
-            ),
-            Row(
-              children: [
-                Icon(Icons.add_road, color: color),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    station.name.isEmpty ? 'Cestna postaja' : station.name,
-                    // Explicit: the iOS sheet inherits a single-line, fading
-                    // DefaultTextStyle that clipped long names mid-glyph.
-                    softWrap: true,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+              const SizedBox(height: 4),
+              Text(
+                [
+                  if (station.roadState.isNotEmpty)
+                    'Cestišče: ${station.roadState}',
+                  if (station.precipitation.isNotEmpty)
+                    'Padavine: ${station.precipitation}',
+                ].join(' · '),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _riskAdvice[risk]!,
+                style: TextStyle(color: cs.onSurfaceVariant, height: 1.3),
+              ),
+              if (station.alarms.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Opozorila: ${station.alarms.join(', ')}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              [
-                'Cestno vremenska postaja DRSI',
-                if (at != null) DateFormat('d. M. yyyy, HH:mm').format(at),
-              ].join(' · '),
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: color.withValues(alpha: 0.5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _riskLabels[risk]!,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.readableText(
-                        color,
-                        Theme.of(context).brightness,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    [
-                      if (station.roadState.isNotEmpty)
-                        'Cestišče: ${station.roadState}',
-                      if (station.precipitation.isNotEmpty)
-                        'Padavine: ${station.precipitation}',
-                    ].join(' · '),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _riskAdvice[risk]!,
-                    style: TextStyle(color: cs.onSurfaceVariant, height: 1.3),
-                  ),
-                  if (station.alarms.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Opozorila: ${station.alarms.join(', ')}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 2.2,
-              children: [
-                _metric(cs, Icons.add_road, 'Cesta', _t(station.roadTemp)),
-                _metric(cs, Icons.thermostat, 'Zrak', _t(station.airTemp)),
-                _metric(cs, Icons.ac_unit, 'Zmrzišče', _t(station.freezePoint)),
-                _metric(cs, Icons.water_drop, 'Rosišče', _t(station.dewPoint)),
-                _metric(
-                  cs,
-                  Icons.opacity,
-                  'Vlaga',
-                  station.humidity == null
-                      ? '–'
-                      : '${station.humidity!.round()} %',
-                ),
-                _metric(
-                  cs,
-                  Icons.air,
-                  'Veter',
-                  station.windKmh == null
-                      ? '–'
-                      : '${station.windKmh!.round()} km/h'
-                            '${station.gustKmh == null ? '' : ' (${station.gustKmh!.round()})'}',
-                ),
-                if (station.waterFilmMm != null)
-                  _metric(
-                    cs,
-                    Icons.waves,
-                    'Vodni film',
-                    '${station.waterFilmMm!.toStringAsFixed(2)} mm',
-                  ),
-                if (station.salinity != null)
-                  _metric(
-                    cs,
-                    Icons.grain,
-                    'Slanost',
-                    '${station.salinity!.toStringAsFixed(0)} '
-                            '${station.salinityUnit}'
-                        .trim(),
-                  ),
-              ],
-            ),
-            if (camUrl.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: ColoredBox(
-                    color: Colors.black,
-                    child: CachedNetworkImage(
-                      imageUrl: camUrl,
-                      cacheKey: camUrl,
-                      fit: BoxFit.contain,
-                      placeholder: (_, _) => const Center(
-                        child: CircularProgressIndicator.adaptive(),
-                      ),
-                      errorWidget: (_, _, _) => const Center(
-                        child: Icon(Icons.videocam_off, color: Colors.white54),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ],
-            const SizedBox(height: 8),
-            Text(
-              'Vir: Direkcija RS za infrastrukturo (CVIS)',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+          ),
+        ),
+        const SizedBox(height: 12),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 2.2,
+          children: [
+            _metric(cs, Icons.add_road, 'Cesta', _t(station.roadTemp)),
+            _metric(cs, Icons.thermostat, 'Zrak', _t(station.airTemp)),
+            _metric(cs, Icons.ac_unit, 'Zmrzišče', _t(station.freezePoint)),
+            _metric(cs, Icons.water_drop, 'Rosišče', _t(station.dewPoint)),
+            _metric(
+              cs,
+              Icons.opacity,
+              'Vlaga',
+              station.humidity == null ? '–' : '${station.humidity!.round()} %',
             ),
+            _metric(
+              cs,
+              Icons.air,
+              'Veter',
+              station.windKmh == null
+                  ? '–'
+                  : '${station.windKmh!.round()} km/h'
+                        '${station.gustKmh == null ? '' : ' (${station.gustKmh!.round()})'}',
+            ),
+            if (station.waterFilmMm != null)
+              _metric(
+                cs,
+                Icons.waves,
+                'Vodni film',
+                '${station.waterFilmMm!.toStringAsFixed(2)} mm',
+              ),
+            if (station.salinity != null)
+              _metric(
+                cs,
+                Icons.grain,
+                'Slanost',
+                '${station.salinity!.toStringAsFixed(0)} '
+                        '${station.salinityUnit}'
+                    .trim(),
+              ),
           ],
         ),
-      ),
+        if (camUrl.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: ColoredBox(
+                color: Colors.black,
+                child: CachedNetworkImage(
+                  imageUrl: camUrl,
+                  cacheKey: camUrl,
+                  fit: BoxFit.contain,
+                  placeholder: (_, _) =>
+                      const Center(child: CircularProgressIndicator.adaptive()),
+                  errorWidget: (_, _, _) => const Center(
+                    child: Icon(Icons.videocam_off, color: Colors.white54),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          'Vir: Direkcija RS za infrastrukturo (CVIS)',
+          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+        ),
+      ],
     );
   }
 
