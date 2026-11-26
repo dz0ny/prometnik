@@ -13,6 +13,8 @@
 // Plain-http cameras (www.drsc.si) are served over https, and CORS is open so
 // the web build can load them too.
 
+import { captureSlice, handleHistory, handleSnap } from './snapshots.js';
+
 export const ALLOWED_HOSTS = new Set([
   'kamere.dars.si',
   'www.drsc.si',
@@ -60,7 +62,7 @@ function withHeaders(res, maxAge, state) {
   return out;
 }
 
-async function fetchFrame(cam) {
+export async function fetchFrame(cam) {
   const res = await fetch(cam.toString(), {
     headers: { 'User-Agent': 'prometnik-cams/1.0 (+https://github.com/dz0ny/prometnik)' },
     signal: AbortSignal.timeout(ORIGIN_TIMEOUT_MS),
@@ -73,6 +75,11 @@ async function fetchFrame(cam) {
 }
 
 export default {
+  // Hourly history: every 5 minutes snapshot one slice of the cameras.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(captureSlice(env, event.scheduledTime, fetchFrame));
+  },
+
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') {
@@ -83,7 +90,12 @@ export default {
         },
       });
     }
-    if (url.pathname !== '/cam' || !['GET', 'HEAD'].includes(request.method)) {
+    if (!['GET', 'HEAD'].includes(request.method)) {
+      return new Response('Method not allowed', { status: 405 });
+    }
+    if (url.pathname === '/history') return handleHistory(url, env);
+    if (url.pathname === '/snap') return handleSnap(url, env);
+    if (url.pathname !== '/cam') {
       return new Response('Not found', { status: 404 });
     }
     const cam = cameraUrl(url.searchParams.get('u'));
