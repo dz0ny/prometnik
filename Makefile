@@ -79,17 +79,21 @@ bundle-no-bump: ## Build release App Bundle without bumping version
 clean: ## Clean build artifacts
 	flutter clean
 
-release: release-android ## Alias for Android GitHub release
+release: release-android ## Bump+push and publish a GitHub release (CI builds all assets)
 
-release-android: build ## Build APK and create GitHub release (Android only)
+release-android: bump ## Bump+push and create GitHub release (CI builds & uploads APK, AAB, macOS, web)
 	$(eval VERSION := $(shell grep '^version:' $(PUBSPEC) | sed 's/version: //' | cut -d'+' -f1))
 	@command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not found — https://cli.github.com"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "Error: not logged in to gh — run 'gh auth login'"; exit 1; }
-	@echo "Creating GitHub release v$(VERSION)..."
-	@cp $(BUILD_DIR)/app-release.apk $(BUILD_DIR)/$(APP_NAME)-$(VERSION).apk
-	@gh release create "v$(VERSION)" \
-		"$(BUILD_DIR)/$(APP_NAME)-$(VERSION).apk#Prometnik $(VERSION) APK" \
+	@echo "Committing version bump v$(VERSION) and pushing (CI builds from this commit)..."
+	git add $(PUBSPEC)
+	git commit -m "chore: Release v$(VERSION)"
+	git push
+	@echo "Creating GitHub release v$(VERSION) (triggers CI build + upload)..."
+	gh release create "v$(VERSION)" \
 		--title "Prometnik v$(VERSION)" \
 		--notes "Release $(VERSION)" \
 		--latest
-	@echo "Release v$(VERSION) created. CI will attach AAB, iOS, macOS, and web artifacts."
+	@echo "Release v$(VERSION) created - CI is building APK, AAB, macOS and web."
+	@echo "Release: https://github.com/dz0ny/prometnik/releases/tag/v$(VERSION)"
+	@echo "Actions: https://github.com/dz0ny/prometnik/actions"
