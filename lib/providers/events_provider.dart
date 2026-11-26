@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/traffic_event.dart';
 import '../services/events_service.dart';
+import '../services/user_error.dart';
 
 /// Holds the list of traffic events and keeps it fresh by polling the
 /// promet.si data channel (which caches for ~60s).
@@ -67,7 +68,7 @@ class EventsProvider extends ChangeNotifier {
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = userErrorMessage(e);
       debugPrint('EventsProvider.refresh error: $e');
     } finally {
       _isLoading = false;

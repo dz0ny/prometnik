@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/burja_station.dart';
 import '../services/burja_service.dart';
+import '../services/user_error.dart';
 
 /// Holds burja (crosswind) measurements and refreshes them periodically.
 class BurjaProvider extends ChangeNotifier {
@@ -54,7 +55,7 @@ class BurjaProvider extends ChangeNotifier {
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = userErrorMessage(e);
       debugPrint('BurjaProvider.refresh error: $e');
     } finally {
       _isLoading = false;

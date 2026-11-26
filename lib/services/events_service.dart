@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/traffic_event.dart';
+import 'user_error.dart';
 
 /// Fetches traffic events ("dogodki") from the public promet.si data channel.
 ///
@@ -17,13 +18,15 @@ class EventsService {
   static const Duration _timeout = Duration(seconds: 20);
 
   Future<List<TrafficEvent>> fetchEvents() async {
-    final response = await http.get(
-      Uri.parse(_endpoint),
-      headers: const {
-        'Accept': 'application/json',
-        'User-Agent': 'promet-flutter/1.0 (+https://www.promet.si/)',
-      },
-    ).timeout(_timeout);
+    final response = await http
+        .get(
+          Uri.parse(_endpoint),
+          headers: const {
+            'Accept': 'application/json',
+            'User-Agent': 'promet-flutter/1.0 (+https://www.promet.si/)',
+          },
+        )
+        .timeout(_timeout);
 
     if (response.statusCode != 200) {
       throw EventsServiceException(
@@ -58,7 +61,8 @@ class EventsService {
   }
 }
 
-class EventsServiceException implements Exception {
+class EventsServiceException implements AppServiceException {
+  @override
   final String message;
   const EventsServiceException(this.message);
   @override

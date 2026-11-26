@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/weather_station.dart';
+import 'user_error.dart';
 
 /// Fetches road weather + camera stations from the public ceste.si (DARS) API.
 ///
@@ -21,13 +22,15 @@ class WeatherService {
 
   Future<List<WeatherStation>> fetchStations() async {
     final uri = Uri.parse(_endpoint);
-    final response = await http.get(
-      uri,
-      headers: const {
-        'Accept': 'application/json',
-        'User-Agent': 'promet-flutter/1.0 (+https://www.ceste.si/Vreme/)',
-      },
-    ).timeout(_timeout);
+    final response = await http
+        .get(
+          uri,
+          headers: const {
+            'Accept': 'application/json',
+            'User-Agent': 'promet-flutter/1.0 (+https://www.ceste.si/Vreme/)',
+          },
+        )
+        .timeout(_timeout);
 
     if (response.statusCode != 200) {
       throw WeatherServiceException(
@@ -58,7 +61,8 @@ class WeatherService {
   }
 }
 
-class WeatherServiceException implements Exception {
+class WeatherServiceException implements AppServiceException {
+  @override
   final String message;
   const WeatherServiceException(this.message);
   @override

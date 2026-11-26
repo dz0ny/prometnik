@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/travel_time.dart';
+import 'user_error.dart';
 
 /// Fetches travel times ("potovalni časi") from the public promet.si data
 /// channel `GET https://www.promet.si/dc/agg.potovalnicasi.v2` (GeoJSON-style
@@ -16,13 +17,15 @@ class TravelTimesService {
   static const Duration _timeout = Duration(seconds: 20);
 
   Future<List<TravelTime>> fetchTravelTimes() async {
-    final response = await http.get(
-      Uri.parse(_endpoint),
-      headers: const {
-        'Accept': 'application/json',
-        'User-Agent': 'promet-flutter/1.0 (+https://www.promet.si/)',
-      },
-    ).timeout(_timeout);
+    final response = await http
+        .get(
+          Uri.parse(_endpoint),
+          headers: const {
+            'Accept': 'application/json',
+            'User-Agent': 'promet-flutter/1.0 (+https://www.promet.si/)',
+          },
+        )
+        .timeout(_timeout);
 
     if (response.statusCode != 200) {
       throw TravelTimesServiceException(
@@ -33,7 +36,9 @@ class TravelTimesService {
     try {
       final decoded = json.decode(utf8.decode(response.bodyBytes));
       if (decoded is! Map || decoded['features'] is! List) {
-        throw const TravelTimesServiceException('Nepričakovana oblika podatkov.');
+        throw const TravelTimesServiceException(
+          'Nepričakovana oblika podatkov.',
+        );
       }
       final items = <TravelTime>[];
       for (final feature in decoded['features'] as List) {
@@ -52,7 +57,8 @@ class TravelTimesService {
   }
 }
 
-class TravelTimesServiceException implements Exception {
+class TravelTimesServiceException implements AppServiceException {
+  @override
   final String message;
   const TravelTimesServiceException(this.message);
   @override

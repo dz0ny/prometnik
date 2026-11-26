@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/drsi_station.dart';
+import 'user_error.dart';
 
 /// Road weather stations from DRSI's public CVIS site
 /// (http://drsi.cgs-labs.si/CVIS).
@@ -118,7 +119,8 @@ List<DrsiStation> parseDrsiTable(String body) {
   return out;
 }
 
-class DrsiServiceException implements Exception {
+class DrsiServiceException implements AppServiceException {
+  @override
   final String message;
   const DrsiServiceException(this.message);
   @override

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/traffic_camera.dart';
+import 'user_error.dart';
 
 /// Fetches DARS traffic cameras from the public promet.si data channel
 /// `GET https://www.promet.si/dc/agg.kamere.v2` (GeoJSON FeatureCollection).
@@ -14,13 +15,15 @@ class CamerasService {
   static const Duration _timeout = Duration(seconds: 20);
 
   Future<List<TrafficCamera>> fetchCameras() async {
-    final response = await http.get(
-      Uri.parse(_endpoint),
-      headers: const {
-        'Accept': 'application/json',
-        'User-Agent': 'promet-flutter/1.0 (+https://www.promet.si/)',
-      },
-    ).timeout(_timeout);
+    final response = await http
+        .get(
+          Uri.parse(_endpoint),
+          headers: const {
+            'Accept': 'application/json',
+            'User-Agent': 'promet-flutter/1.0 (+https://www.promet.si/)',
+          },
+        )
+        .timeout(_timeout);
 
     if (response.statusCode != 200) {
       throw CamerasServiceException(
@@ -51,7 +54,8 @@ class CamerasService {
   }
 }
 
-class CamerasServiceException implements Exception {
+class CamerasServiceException implements AppServiceException {
+  @override
   final String message;
   const CamerasServiceException(this.message);
   @override

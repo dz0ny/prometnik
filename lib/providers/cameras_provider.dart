@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../models/traffic_camera.dart';
 import '../models/weather_station.dart';
 import '../services/cameras_service.dart';
+import '../services/user_error.dart';
 
 /// Holds the DARS camera list and refreshes it periodically. The camera set is
 /// fairly static; the live JPEG images are cache-busted at display time.
@@ -77,7 +78,7 @@ class CamerasProvider extends ChangeNotifier {
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = userErrorMessage(e);
       debugPrint('CamerasProvider.refresh error: $e');
     } finally {
       _isLoading = false;

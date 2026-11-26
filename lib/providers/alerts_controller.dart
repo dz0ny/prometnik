@@ -75,9 +75,56 @@ class AlertsController extends ChangeNotifier {
   Future<void>? _starting;
   bool _disposed = false;
 
+  LocationStatus? _locationProblem;
+  bool _notificationsDenied = false;
+  final Set<String> _pendingTravelToggles = {};
+
   Position? get position => _position;
   bool get locationEnabled => _locationEnabled;
   bool get requesting => _requesting;
+
+  /// Why the last [enableLocation] (or the running position stream) failed;
+  /// null while location works or before the user asked for it.
+  LocationStatus? get locationProblem => _locationProblem;
+
+  /// Slovenian text for [locationProblem], or null.
+  String? get locationProblemMessage => _locationProblem?.message;
+
+  /// Whether [openLocationSettings] can fix [locationProblem] (a plain
+  /// [LocationStatus.denied] can also be retried with [enableLocation]).
+  bool get canOpenLocationSettings =>
+      _locationProblem == LocationStatus.deniedForever ||
+      _locationProblem == LocationStatus.serviceDisabled;
+
+  /// True after the user declined notification permission when turning on a
+  /// travel-time alert (the alert was then not turned on). Cleared once a
+  /// later request is granted, or by [dismissNotificationsDenied].
+  bool get notificationsDenied => _notificationsDenied;
+
+  /// Open the system screen that fixes [locationProblem] (app settings when
+  /// permission is denied, location settings when services are off). Call
+  /// [enableLocation] again when the app resumes.
+  Future<bool> openLocationSettings() {
+    final problem = _locationProblem;
+    if (problem == null) return Future.value(false);
+    return LocationService.instance.openSettingsFor(problem);
+  }
+
+  /// Open the app's system settings (e.g. to allow notifications).
+  Future<bool> openAppSettings() =>
+      LocationService.instance.openSettingsFor(LocationStatus.deniedForever);
+
+  void dismissLocationProblem() {
+    if (_locationProblem == null) return;
+    _locationProblem = null;
+    notifyListeners();
+  }
+
+  void dismissNotificationsDenied() {
+    if (!_notificationsDenied) return;
+    _notificationsDenied = false;
+    notifyListeners();
+  }
 
   /// All current events (sorted as delivered by the service: priority, road).
   List<TrafficEvent> get events => List.unmodifiable(_events);
@@ -97,17 +144,40 @@ class AlertsController extends ChangeNotifier {
     _persistWatched();
   }
 
-  void toggleTravelTime(String id) {
-    if (id.isEmpty) return;
-    if (!_watchedTravelTimes.add(id)) {
-      _watchedTravelTimes.remove(id);
+  /// Toggle a travel-time alert. Turning one on first asks for notification
+  /// permission; if that is declined the alert stays off and
+  /// [notificationsDenied] becomes true. Completes with whether [id] is
+  /// watched afterwards (callers may ignore the result).
+  Future<bool> toggleTravelTime(String id) async {
+    if (id.isEmpty) return false;
+    if (_watchedTravelTimes.remove(id)) {
       _lastTravelAlertById.remove(id);
-    } else {
-      final current = _travelTimesById[id];
-      if (current != null) _lastTravelAlertById[id] = current;
-      unawaited(NotificationsService.instance.requestPermission());
+      _persistWatchedTravelTimes();
+      return false;
     }
+    // A double tap while the permission prompt is up must not toggle twice.
+    if (!_pendingTravelToggles.add(id)) return false;
+    bool granted;
+    try {
+      granted = await NotificationsService.instance.requestPermission();
+    } on Exception catch (e) {
+      debugPrint('notification permission request failed: $e');
+      granted = false;
+    } finally {
+      _pendingTravelToggles.remove(id);
+    }
+    if (_disposed) return false;
+    if (!granted) {
+      _notificationsDenied = true;
+      notifyListeners();
+      return false;
+    }
+    _notificationsDenied = false;
+    _watchedTravelTimes.add(id);
+    final current = _travelTimesById[id];
+    if (current != null) _lastTravelAlertById[id] = current;
     _persistWatchedTravelTimes();
+    return true;
   }
 
   void setWatched(String ref, bool on) {
@@ -209,10 +279,16 @@ class AlertsController extends ChangeNotifier {
     _requesting = true;
     notifyListeners();
     try {
-      final ok = await LocationService.instance.ensurePermission();
-      if (ok) {
-        await NotificationsService.instance.requestPermission();
+      final status = await LocationService.instance.requestPermission();
+      if (status == LocationStatus.granted) {
+        _locationProblem = null;
+        // Proximity alerts need notifications, but location works without.
+        final notifications = await NotificationsService.instance
+            .requestPermission();
+        if (notifications) _notificationsDenied = false;
         await _startTracking();
+      } else {
+        _locationProblem = status;
       }
     } on Exception catch (e) {
       debugPrint('enableLocation failed: $e');
@@ -239,12 +315,18 @@ class AlertsController extends ChangeNotifier {
         // Location switched off / permission revoked while running.
         debugPrint('position stream error: $e');
         _locationEnabled = false;
+        if (e is LocationServiceDisabledException) {
+          _locationProblem = LocationStatus.serviceDisabled;
+        } else if (e is PermissionDeniedException) {
+          _locationProblem = LocationStatus.deniedForever;
+        }
         unawaited(_sub?.cancel());
         _sub = null;
         if (!_disposed) notifyListeners();
       },
     );
     _locationEnabled = true;
+    _locationProblem = null;
     _position = await LocationService.instance.current() ?? _position;
     if (_disposed) return;
     _checkAlerts();

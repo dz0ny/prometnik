@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/weather_station.dart';
 import '../services/weather_service.dart';
+import '../services/user_error.dart';
 
 /// Holds the list of weather/camera stations and keeps it fresh by polling
 /// the ceste.si API on the same cadence as the official web app (10 min).
@@ -76,7 +77,7 @@ class WeatherProvider extends ChangeNotifier {
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = userErrorMessage(e);
       debugPrint('WeatherProvider.refresh error: $e');
     } finally {
       _isLoading = false;

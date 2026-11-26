@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/drsi_station.dart';
 import '../services/drsi_service.dart';
+import '../services/user_error.dart';
 
 /// Holds DRSI road weather stations and refreshes them periodically
 /// (stations report every ~5 minutes).
@@ -56,7 +57,7 @@ class DrsiProvider extends ChangeNotifier {
       _lastUpdated = DateTime.now();
       _error = null;
     } on Exception catch (e) {
-      _error = e.toString();
+      _error = userErrorMessage(e);
       debugPrint('DrsiProvider.refresh error: $e');
     } finally {
       _isLoading = false;

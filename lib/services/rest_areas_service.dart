@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/rest_area.dart';
+import 'user_error.dart';
 
 /// Fetches motorway rest areas + live parking from promet.si
 /// `GET https://www.promet.si/dc/agg.pocivalisca.v2`.
@@ -14,13 +15,15 @@ class RestAreasService {
   static const Duration _timeout = Duration(seconds: 20);
 
   Future<List<RestArea>> fetch() async {
-    final response = await http.get(
-      Uri.parse(_endpoint),
-      headers: const {
-        'Accept': 'application/json',
-        'User-Agent': 'promet-flutter/1.0 (+https://www.promet.si/)',
-      },
-    ).timeout(_timeout);
+    final response = await http
+        .get(
+          Uri.parse(_endpoint),
+          headers: const {
+            'Accept': 'application/json',
+            'User-Agent': 'promet-flutter/1.0 (+https://www.promet.si/)',
+          },
+        )
+        .timeout(_timeout);
     if (response.statusCode != 200) {
       throw RestAreasServiceException(
         'Strežnik je vrnil napako ${response.statusCode}.',
@@ -49,7 +52,8 @@ class RestAreasService {
   }
 }
 
-class RestAreasServiceException implements Exception {
+class RestAreasServiceException implements AppServiceException {
+  @override
   final String message;
   const RestAreasServiceException(this.message);
   @override

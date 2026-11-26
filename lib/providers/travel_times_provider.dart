@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/travel_time.dart';
 import '../services/travel_times_service.dart';
+import '../services/user_error.dart';
 
 /// Holds travel times and keeps them fresh by polling the promet.si data
 /// channel (which caches for ~60s).
@@ -60,7 +61,7 @@ class TravelTimesProvider extends ChangeNotifier {
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = userErrorMessage(e);
       debugPrint('TravelTimesProvider.refresh error: $e');
     } finally {
       _isLoading = false;

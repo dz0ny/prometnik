@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/rest_area.dart';
 import '../services/rest_areas_service.dart';
+import '../services/user_error.dart';
 
 /// Holds rest areas and refreshes parking availability periodically.
 class RestAreasProvider extends ChangeNotifier {
@@ -55,7 +56,7 @@ class RestAreasProvider extends ChangeNotifier {
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = userErrorMessage(e);
       debugPrint('RestAreasProvider.refresh error: $e');
     } finally {
       _isLoading = false;
