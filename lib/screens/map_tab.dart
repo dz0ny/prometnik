@@ -1047,6 +1047,9 @@ class _MapButton extends StatelessWidget {
 }
 
 // ── Marker layers ────────────────────────────────────────────────────────
+// Markers carry stable keys: flutter_map culls off-screen markers, so as the
+// map pans the visible list shifts and unkeyed markers would re-mount (and
+// reload their webcam thumbnails) on every move.
 // Each layer selects only the list it draws, so it rebuilds when that list's
 // identity changes (providers replace it on each successful poll), not when
 // an unrelated provider notifies. Derived lists are memoized on the inputs'
@@ -1124,6 +1127,7 @@ class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
         : null;
     if (thumb == null || size == null) {
       return Marker(
+        key: ValueKey('cam:${cam.id}'),
         point: cam.position,
         width: pin,
         height: pin,
@@ -1133,6 +1137,7 @@ class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
     final width = size.width;
     final height = size.extent + pin;
     return Marker(
+      key: ValueKey('cam:${cam.id}'),
       point: cam.position,
       width: width,
       height: height,
@@ -1173,6 +1178,7 @@ class _RestAreasLayerState extends State<_RestAreasLayer> {
       markers: [
         for (final group in groups)
           Marker(
+            key: ValueKey('rest:${group.areas.first.id}'),
             point: group.position,
             width: group.markerWidth,
             height: group.markerHeight,
@@ -1198,6 +1204,7 @@ class _BurjaLayer extends StatelessWidget {
       markers: [
         for (final st in items)
           Marker(
+            key: ValueKey('burja:${st.id}'),
             point: st.position,
             width: 28,
             height: 28,
@@ -1214,6 +1221,7 @@ class _BurjaLayer extends StatelessWidget {
 class _WeatherStationsLayer extends StatelessWidget {
   final bool showWeather;
   final bool showCameras;
+
   /// Thumbnail tier for the current zoom, or null for plain pins.
   final ThumbnailSize? thumbnailSize;
   final void Function(WeatherStation) onTap;
@@ -1247,6 +1255,7 @@ class _WeatherStationsLayer extends StatelessWidget {
         ? station.cameraUrlWithBuster(bucket)
         : null;
     return Marker(
+      key: ValueKey('st:${station.stationId}'),
       point: station.position,
       width: thumb != null && size != null
           ? size.width
@@ -1276,6 +1285,7 @@ class _DrsiLayer extends StatelessWidget {
       markers: [
         for (final st in items)
           Marker(
+            key: ValueKey('drsi:${st.id}'),
             point: st.position,
             width: 56,
             height: 26,
@@ -1324,6 +1334,7 @@ class _EventsLayerState extends State<_EventsLayer> {
       markers: [
         for (final event in _visible)
           Marker(
+            key: ValueKey('ev:${event.id}'),
             point: event.position,
             width: 28,
             height: 28,
