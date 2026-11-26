@@ -14,7 +14,8 @@ import { cameraUrl } from './index.js';
 // which keeps a run well under the Workers per-invocation subrequest limit.
 export const SLICES = 60;
 const HISTORY_HOURS = 24;
-const PAUSE_MS = 700;
+const CONCURRENCY = 4;
+const RUN_BUDGET_MS = 40000;
 // The camera hosts are slow and stall in bursts; the cron can afford to wait
 // much longer than a viewer's request.
 const CRON_FETCH_TIMEOUT_MS = 25000;
@@ -297,49 +298,76 @@ async function captureSliceInner(env, now, fetchFrame) {
   const stamp = hourStamp(now);
   const cameras = await knownCameras(env);
 
-  // This minute's slice, plus the previous minute's as a second chance for
-  // cameras that timed out then (same hour only; stored ones are skipped).
-  const retrySlice = slice > 0 ? slice - 1 : -1;
+  // A run either reaches the camera host or it doesn't (it depends on where
+  // Cloudflare runs the cron). So every run takes all cameras whose minute
+  // has come and that have no frame for this hour yet: a run that can reach
+  // the host catches up on what the unlucky ones before it missed.
+  const doneKey = `meta/done-${stamp}.json`;
+  let done = new Set();
+  try {
+    const obj = await env.SNAPS.get(doneKey);
+    if (obj) done = new Set(await obj.json());
+  } catch {
+    // first run of the hour
+  }
   const mine = [];
   for (const cam of cameras) {
     const id = await cameraId(cam);
-    const s = sliceOf(id);
-    if (s === slice || s === retrySlice) {
-      mine.push({ cam, key: `h/${id}/${stamp}.jpg` });
+    if (sliceOf(id) <= slice && !done.has(id)) {
+      mine.push({ cam, id, key: `h/${id}/${stamp}.jpg`, own: sliceOf(id) === slice });
     }
   }
+  mine.sort((a, b) => Number(b.own) - Number(a.own));
 
-  // One camera at a time with a pause between: the camera host refuses
-  // connections (522) when it sees bursts. Three failures in a row mean it is
-  // throttling us, so the run backs off and leaves the rest for the retry.
   let stored = 0;
   let failed = 0;
   let skipped = 0;
-  let streak = 0;
   const errors = [];
-  for (const job of mine) {
-    if (streak >= 3) {
-      skipped++;
-      continue;
-    }
+  const started = Date.now();
+  const fetchOne = async (job) => {
     try {
-      if (await env.SNAPS.head(job.key)) continue; // already have this hour
-      const res = await fetchFrame(new URL(job.cam), CRON_FETCH_TIMEOUT_MS);
-      const wrote = await storeHourly(
-        env,
-        job.cam,
-        await res.arrayBuffer(),
-        res.headers.get('Content-Type'),
-        now,
-      );
-      if (wrote) stored++;
-      streak = 0;
+      if (!(await env.SNAPS.head(job.key))) {
+        const res = await fetchFrame(new URL(job.cam), CRON_FETCH_TIMEOUT_MS);
+        const wrote = await storeHourly(
+          env,
+          job.cam,
+          await res.arrayBuffer(),
+          res.headers.get('Content-Type'),
+          now,
+        );
+        if (wrote) stored++;
+      }
+      done.add(job.id);
+      return true;
     } catch (err) {
       failed++;
-      streak++;
       if (errors.length < 3) errors.push(`${job.cam.split('/').pop()}: ${err.message}`);
+      return false;
     }
-    await new Promise((resolve) => setTimeout(resolve, PAUSE_MS));
+  };
+
+  // Probe with up to three cameras; if none answers, this run can't reach
+  // the host and stops without hammering it.
+  const queue = [...mine];
+  let reachable = false;
+  for (let i = 0; i < 3 && queue.length > 0 && !reachable; i++) {
+    reachable = await fetchOne(queue.shift());
+  }
+  if (reachable) {
+    const worker = async () => {
+      for (let job = queue.shift(); job; job = queue.shift()) {
+        if (Date.now() - started > RUN_BUDGET_MS) {
+          queue.unshift(job);
+          return;
+        }
+        await fetchOne(job);
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  }
+  skipped = queue.length;
+  if (stored > 0 || done.size > 0) {
+    await env.SNAPS.put(doneKey, JSON.stringify([...done]));
   }
   console.log(
     `slice ${slice} @${stamp}: ${mine.length} cameras, ${stored} stored, ${failed} failed (of ${cameras.length} total)`,
