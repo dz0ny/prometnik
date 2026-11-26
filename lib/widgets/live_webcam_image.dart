@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -151,12 +152,17 @@ class WebcamHistoryStrip extends StatefulWidget {
   /// Changes when a new live frame arrives, so the strip reloads.
   final Object? refreshToken;
 
+  /// Draw the strip inside a tinted card (sheets); false over a dark
+  /// fullscreen image.
+  final bool framed;
+
   const WebcamHistoryStrip({
     super.key,
     required this.url,
     required this.selected,
     required this.onSelect,
     this.refreshToken,
+    this.framed = true,
   });
 
   @override
@@ -168,6 +174,49 @@ class _WebcamHistoryStripState extends State<WebcamHistoryStrip> {
 
   /// The worker snapshot being downloaded after a tap, if any.
   DateTime? _loadingAt;
+
+  // Timelapse playback through the history, oldest to newest.
+  bool _playing = false;
+  int _playToken = 0;
+
+  static const int _slots = 24;
+  static const double _stripHeight = 46;
+  static const double _liveWidth = 58;
+
+  @override
+  void dispose() {
+    _playToken++;
+    super.dispose();
+  }
+
+  void _stopPlay() {
+    _playToken++;
+    if (_playing) setState(() => _playing = false);
+  }
+
+  Future<void> _togglePlay() async {
+    if (_playing) {
+      _stopPlay();
+      return;
+    }
+    final token = ++_playToken;
+    final frames = List.of(_history);
+    setState(() {
+      _playing = true;
+      _loadingAt = null;
+    });
+    for (var i = 0; i < frames.length; i++) {
+      final e = frames[i];
+      final frame = e.frame ?? await WebcamStore.instance.snapshotFrame(e);
+      if (!mounted || token != _playToken) return;
+      if (frame == null) continue;
+      widget.onSelect(frame);
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      if (!mounted || token != _playToken) return;
+    }
+    setState(() => _playing = false);
+    widget.onSelect(null);
+  }
 
   @override
   void initState() {
@@ -207,6 +256,7 @@ class _WebcamHistoryStripState extends State<WebcamHistoryStrip> {
   }
 
   Future<void> _pick(WebcamHistoryEntry e) async {
+    _stopPlay();
     final local = e.frame;
     if (local != null) {
       setState(() => _loadingAt = null);
@@ -227,143 +277,392 @@ class _WebcamHistoryStripState extends State<WebcamHistoryStrip> {
     final cs = Theme.of(context).colorScheme;
     final entries = _history.reversed.toList(); // newest first
     final selectedAt = widget.selected?.at;
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Zadnjih 24 ur',
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+    final liveSelected = widget.selected == null && _loadingAt == null;
+    final liveBytes = WebcamStore.instance.latestSync(widget.url)?.bytes;
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.history, size: 16, color: cs.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              'Zadnjih 24 ur',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 64,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: entries.length + 1,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  return _tile(
-                    context,
-                    selected: widget.selected == null && _loadingAt == null,
-                    label: 'V živo',
-                    onTap: () {
-                      setState(() => _loadingAt = null);
-                      widget.onSelect(null);
-                    },
-                    child: Icon(Icons.videocam, color: cs.primary, size: 22),
-                  );
-                }
-                final e = entries[i - 1];
-                final loading = _loadingAt == e.at;
-                final thumb = e.bytes != null
-                    ? Image.memory(
-                        e.bytes!,
-                        fit: BoxFit.cover,
-                        cacheWidth: 192,
-                        gaplessPlayback: true,
-                      )
-                    : CachedNetworkImage(
-                        imageUrl: e.url!,
-                        cacheManager: WebcamStore.instance.snapshotCache,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 192,
-                        fadeInDuration: const Duration(milliseconds: 150),
-                        placeholder: (_, _) => const SizedBox.shrink(),
-                        errorWidget: (_, _, _) => Icon(
-                          Icons.image_not_supported_outlined,
-                          color: cs.onSurfaceVariant,
-                          size: 18,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: WebcamTimeLabel(snapshot: widget.selected),
+              ),
+            ),
+            Tooltip(
+              message: _playing ? 'Ustavi' : 'Predvajaj zadnjih 24 ur',
+              child: Material(
+                color: _playing
+                    ? cs.primary
+                    : cs.primary.withValues(alpha: .14),
+                shape: const StadiumBorder(),
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: () => unawaited(_togglePlay()),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _playing ? Icons.stop : Icons.play_arrow,
+                          size: 16,
+                          color: _playing ? cs.onPrimary : cs.primary,
                         ),
-                      );
-                return _tile(
-                  context,
-                  selected:
-                      loading ||
-                      (_loadingAt == null &&
-                          selectedAt != null &&
-                          selectedAt.isAtSameMomentAs(e.at)),
-                  label: '${e.at.hour.toString().padLeft(2, '0')}:00',
-                  onTap: () => unawaited(_pick(e)),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      thumb,
-                      if (loading)
-                        const ColoredBox(
-                          color: Colors.black38,
-                          child: Center(
-                            child: SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            ),
+                        const SizedBox(width: 2),
+                        Text(
+                          _playing ? 'Ustavi' : 'Predvajaj',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: _playing ? cs.onPrimary : cs.primary,
                           ),
                         ),
-                    ],
+                      ],
+                    ),
                   ),
-                );
-              },
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+        const SizedBox(height: 10),
+        _filmstrip(context, liveSelected, selectedAt, liveBytes),
+      ],
+    );
+
+    if (!widget.framed) return content;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: .55),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: content,
       ),
     );
   }
 
-  Widget _tile(
-    BuildContext context, {
-    required bool selected,
-    required String label,
-    required VoidCallback onTap,
-    required Widget child,
-  }) {
+  /// Start of the hour shown in slot [i] (0 = 23 hours ago, 23 = this hour).
+  DateTime _slotHour(int i, DateTime now) => DateTime(
+    now.year,
+    now.month,
+    now.day,
+    now.hour,
+  ).subtract(Duration(hours: _slots - 1 - i));
+
+  /// All 24 hours across one bar (oldest left), then a "V živo" cell. Tap or
+  /// drag along it to scrub; hours without a frame are dimmed and skipped.
+  Widget _filmstrip(
+    BuildContext context,
+    bool liveSelected,
+    DateTime? selectedAt,
+    Uint8List? liveBytes,
+  ) {
     final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final bySlot = List<WebcamHistoryEntry?>.filled(_slots, null);
+    for (final e in _history) {
+      for (var i = 0; i < _slots; i++) {
+        if (_slotHour(i, now).isAtSameMomentAs(e.at)) bySlot[i] = e;
+      }
+    }
+    final activeAt = _loadingAt ?? selectedAt;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stripWidth = constraints.maxWidth - _liveWidth - 6;
+        final cell = stripWidth / _slots;
+
+        void scrubTo(double dx) {
+          if (dx >= stripWidth) {
+            if (!liveSelected) {
+              _stopPlay();
+              setState(() => _loadingAt = null);
+              widget.onSelect(null);
+            }
+            return;
+          }
+          final at = (dx / cell).floor().clamp(0, _slots - 1);
+          // Nearest hour that has a frame.
+          WebcamHistoryEntry? pick;
+          for (var d = 0; d < _slots && pick == null; d++) {
+            if (at - d >= 0) pick = bySlot[at - d];
+            if (pick == null && at + d < _slots) pick = bySlot[at + d];
+          }
+          if (pick == null) return;
+          if (activeAt != null && activeAt.isAtSameMomentAs(pick.at)) return;
+          unawaited(_pick(pick));
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (d) => scrubTo(d.localPosition.dx),
+              onHorizontalDragStart: (d) => scrubTo(d.localPosition.dx),
+              onHorizontalDragUpdate: (d) => scrubTo(d.localPosition.dx),
+              child: SizedBox(
+                height: _stripHeight,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: stripWidth,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: ColoredBox(
+                          color: cs.surfaceContainerHighest,
+                          child: Row(
+                            children: [
+                              for (var i = 0; i < _slots; i++)
+                                Expanded(
+                                  child: _slotCell(
+                                    cs,
+                                    bySlot[i],
+                                    selected:
+                                        bySlot[i] != null &&
+                                        activeAt != null &&
+                                        activeAt.isAtSameMomentAs(
+                                          bySlot[i]!.at,
+                                        ),
+                                    loading:
+                                        bySlot[i] != null &&
+                                        _loadingAt == bySlot[i]!.at,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    _liveCell(cs, liveSelected, liveBytes),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Hour ticks every 6 hours under the strip.
+            SizedBox(
+              width: stripWidth,
+              height: 14,
+              child: Stack(
+                children: [
+                  for (final i in const [0, 6, 12, 18])
+                    Positioned(
+                      left: i * cell,
+                      child: Text(
+                        '${_slotHour(i, now).hour.toString().padLeft(2, '0')}h',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _slotCell(
+    ColorScheme cs,
+    WebcamHistoryEntry? e, {
+    required bool selected,
+    required bool loading,
+  }) {
+    if (e == null) {
+      // No frame for this hour.
+      return Center(
+        child: Container(
+          width: 3,
+          height: 3,
+          decoration: BoxDecoration(
+            color: cs.onSurfaceVariant.withValues(alpha: .35),
+            shape: BoxShape.circle,
+          ),
+        ),
+      );
+    }
+    final thumb = e.bytes != null
+        ? Image.memory(
+            e.bytes!,
+            fit: BoxFit.cover,
+            cacheWidth: 160,
+            gaplessPlayback: true,
+          )
+        : CachedNetworkImage(
+            imageUrl: e.url!,
+            cacheManager: WebcamStore.instance.snapshotCache,
+            fit: BoxFit.cover,
+            memCacheWidth: 160,
+            fadeInDuration: const Duration(milliseconds: 150),
+            placeholder: (_, _) => const SizedBox.shrink(),
+            errorWidget: (_, _, _) => const SizedBox.shrink(),
+          );
     return Semantics(
       button: true,
       selected: selected,
-      label: label == 'V živo' ? 'Slika v živo' : 'Posnetek ob $label',
-      child: GestureDetector(
-        onTap: onTap,
-        child: SizedBox(
-          width: 72,
-          child: Column(
-            children: [
-              Container(
-                width: 72,
-                height: 44,
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: selected ? cs.primary : Colors.transparent,
-                    width: 2,
+      label: 'Posnetek ob ${webcamHourLabel(e.at)}',
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          color: loading ? Colors.black38 : null,
+          border: selected
+              ? Border.all(color: cs.primary, width: 2.5)
+              : Border(
+                  right: BorderSide(
+                    color: Colors.black.withValues(alpha: .35),
+                    width: .5,
                   ),
                 ),
-                child: Center(child: child),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                  color: selected ? cs.primary : cs.onSurfaceVariant,
-                ),
-              ),
-            ],
+        ),
+        child: SizedBox.expand(child: thumb),
+      ),
+    );
+  }
+
+  Widget _liveCell(ColorScheme cs, bool selected, Uint8List? liveBytes) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Slika v živo',
+      child: Container(
+        width: _liveWidth,
+        clipBehavior: Clip.antiAlias,
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? cs.primary : Colors.white.withValues(alpha: .12),
+            width: selected ? 2.5 : 1,
           ),
         ),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (liveBytes != null)
+              Image.memory(
+                liveBytes,
+                fit: BoxFit.cover,
+                cacheWidth: 180,
+                gaplessPlayback: true,
+              ),
+            const ColoredBox(color: Colors.black45),
+            const Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _LiveDot(),
+                  SizedBox(width: 4),
+                  Text(
+                    'Živo',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "HH:00", prefixed with "vč." for hours from the previous day.
+String webcamHourLabel(DateTime at, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  final hh = '${at.hour.toString().padLeft(2, '0')}:00';
+  final sameDay = at.year == n.year && at.month == n.month && at.day == n.day;
+  return sameDay ? hh : 'vč. $hh';
+}
+
+class _LiveDot extends StatelessWidget {
+  const _LiveDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: const BoxDecoration(
+        color: Color(0xFFFF453A),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+/// What the image currently shows: a red "V živo" pill, or the snapshot's
+/// hour and how long ago it was.
+class WebcamTimeLabel extends StatelessWidget {
+  final WebcamFrame? snapshot;
+  const WebcamTimeLabel({super.key, required this.snapshot});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final s = snapshot;
+    if (s == null) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const _LiveDot(),
+          const SizedBox(width: 5),
+          Text(
+            'V živo',
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
+    }
+    final hours = DateTime.now().difference(s.at).inHours;
+    final ago = hours <= 0 ? 'pravkar' : 'pred $hours h';
+    return Text(
+      '${webcamHourLabel(s.at)} · $ago',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: cs.primary,
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
@@ -376,20 +675,26 @@ class WebcamSnapshotBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final h = frame.at.hour.toString().padLeft(2, '0');
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.black.withValues(alpha: .62),
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        'Posnetek ob $h:00',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.history, size: 13, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(
+            'Posnetek ${webcamHourLabel(frame.at)}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

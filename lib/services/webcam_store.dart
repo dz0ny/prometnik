@@ -104,8 +104,11 @@ class WebcamStore {
   /// hourly snapshot. Concurrent calls for the same URL share one download.
   /// Returns null when the camera can't be reached.
   Future<WebcamFrame?> fetch(String url) {
-    return _inFlight[url] ??= _download(url)
-        .whenComplete(() => _inFlight.remove(url));
+    // Block body on purpose: `=> _inFlight.remove(url)` would return the
+    // in-flight future itself, and whenComplete would then wait on it forever.
+    return _inFlight[url] ??= _download(url).whenComplete(() {
+      _inFlight.remove(url);
+    });
   }
 
   /// Whether a fresh download is worth it ([maxAge] since the last one).
@@ -243,8 +246,9 @@ class WebcamStore {
             (cached.ok ? _serverListTtl : _serverFailTtl)) {
       return Future.value(cached.list);
     }
-    return _serverInFlight[key] ??= _fetchServerHistory(key)
-        .whenComplete(() => _serverInFlight.remove(key));
+    return _serverInFlight[key] ??= _fetchServerHistory(key).whenComplete(() {
+      _serverInFlight.remove(key);
+    });
   }
 
   Future<List<ServerSnapshot>> _fetchServerHistory(String key) async {
@@ -277,10 +281,9 @@ class WebcamStore {
       _snaps[url] = mem;
       return Future.value(mem);
     }
-    return _snapInFlight[url] ??= _downloadSnap(
-      url,
-      entry.at,
-    ).whenComplete(() => _snapInFlight.remove(url));
+    return _snapInFlight[url] ??= _downloadSnap(url, entry.at).whenComplete(() {
+      _snapInFlight.remove(url);
+    });
   }
 
   Future<WebcamFrame?> _downloadSnap(String url, DateTime at) async {

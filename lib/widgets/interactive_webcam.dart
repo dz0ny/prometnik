@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +10,7 @@ import 'weather_details.dart' show WeatherFormat;
 import 'webcam_image.dart';
 import 'sheet_snack.dart';
 import 'live_webcam_image.dart';
+import 'webcam_viewer.dart';
 import '../services/webcam_store.dart';
 
 /// A small dark translucent icon button drawn over the webcam image, with a
@@ -134,19 +134,12 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
   }
 
   void _openFullscreen() {
-    Navigator.of(context, rootNavigator: true).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.black,
-        fullscreenDialog: true,
-        transitionDuration: const Duration(milliseconds: 250),
-        reverseTransitionDuration: const Duration(milliseconds: 200),
-        pageBuilder: (_, _, _) =>
-            _FullscreenWebcam(station: widget.station, initialKey: _key),
-        // Fade the lightbox in/out — a smooth, platform-neutral modal feel.
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
-      ),
+    showWebcamViewer(
+      context,
+      title: widget.station.name,
+      urlFor: widget.station.cameraUrlWithBuster,
+      initialKey: _key,
+      initialSnapshot: _snapshot,
     );
   }
 
@@ -301,107 +294,6 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Zoomable, dismissable fullscreen webcam viewer. Tap to close, long-press to
-/// refresh.
-class _FullscreenWebcam extends StatefulWidget {
-  final WeatherStation station;
-  final int initialKey;
-
-  const _FullscreenWebcam({required this.station, required this.initialKey});
-
-  @override
-  State<_FullscreenWebcam> createState() => _FullscreenWebcamState();
-}
-
-class _FullscreenWebcamState extends State<_FullscreenWebcam> {
-  late int _key = widget.initialKey;
-
-  void _refresh() {
-    HapticFeedback.mediumImpact();
-    setState(() => _key = DateTime.now().millisecondsSinceEpoch);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final url = widget.station.cameraUrlWithBuster(_key);
-    return ColoredBox(
-      color: Colors.black,
-      child: Stack(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            onLongPress: _refresh,
-            child: SizedBox.expand(
-              child: InteractiveViewer(
-                minScale: 1,
-                maxScale: 5,
-                child: Center(
-                  child: LiveWebcamImage(
-                    url: url,
-                    fit: BoxFit.contain,
-                    placeholder: (_) => Center(
-                      child: PlatformInfo.isIOS
-                          ? const CupertinoActivityIndicator(
-                              color: Colors.white,
-                            )
-                          : const CircularProgressIndicator(),
-                    ),
-                    errorWidget: (_) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white54,
-                      size: 48,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Tooltip(
-                    message: 'Zapri',
-                    excludeFromSemantics: true,
-                    child: Semantics(
-                      button: true,
-                      label: 'Zapri',
-                      child: AdaptiveButton.icon(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: Icons.close,
-                        style: AdaptiveButtonStyle.tinted,
-                        color: Colors.white24,
-                        iconColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                  Tooltip(
-                    message: 'Osveži sliko',
-                    excludeFromSemantics: true,
-                    child: Semantics(
-                      button: true,
-                      label: 'Osveži sliko',
-                      child: AdaptiveButton.icon(
-                        onPressed: _refresh,
-                        icon: Icons.refresh,
-                        style: AdaptiveButtonStyle.tinted,
-                        color: Colors.white24,
-                        iconColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,6 +9,7 @@ import '../models/traffic_camera.dart';
 import 'sheet_snack.dart';
 import 'app_sheet.dart';
 import 'live_webcam_image.dart';
+import 'webcam_viewer.dart';
 import '../services/webcam_store.dart';
 
 /// Present a DARS camera in a modal bottom sheet (live image, auto-refresh,
@@ -52,17 +52,12 @@ class _CameraSheetState extends State<CameraSheet> {
   }
 
   void _openFullscreen() {
-    final url = widget.camera.imageUrlWithBuster(_key);
-    Navigator.of(context, rootNavigator: true).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.black,
-        fullscreenDialog: true,
-        transitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (_, _, _) => _FullscreenCamera(url: url),
-        transitionsBuilder: (_, a, _, child) =>
-            FadeTransition(opacity: a, child: child),
-      ),
+    showWebcamViewer(
+      context,
+      title: widget.camera.title.isEmpty ? 'Kamera' : widget.camera.title,
+      urlFor: widget.camera.imageUrlWithBuster,
+      initialKey: _key,
+      initialSnapshot: _snapshot,
     );
   }
 
@@ -180,61 +175,3 @@ class _CameraSheetState extends State<CameraSheet> {
 }
 
 /// Zoomable, dismissable fullscreen camera viewer.
-class _FullscreenCamera extends StatelessWidget {
-  final String url;
-
-  const _FullscreenCamera({required this.url});
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Colors.black,
-      child: Stack(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: SizedBox.expand(
-              child: InteractiveViewer(
-                minScale: 1,
-                maxScale: 5,
-                child: Center(
-                  child: LiveWebcamImage(
-                    url: url,
-                    fit: BoxFit.contain,
-                    placeholder: (_) =>
-                        const CupertinoActivityIndicator(color: Colors.white),
-                    errorWidget: (_) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white54,
-                      size: 48,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Tooltip(
-                message: 'Zapri',
-                excludeFromSemantics: true,
-                child: Semantics(
-                  button: true,
-                  label: 'Zapri',
-                  child: AdaptiveButton.icon(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icons.close,
-                    style: AdaptiveButtonStyle.tinted,
-                    color: Colors.white24,
-                    iconColor: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
