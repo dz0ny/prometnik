@@ -1,0 +1,9 @@
+{
+  // Edge cache for webcam images. The app calls
+  // https://prometnik-cams.dz0ny.workers.dev/cam?u=<encoded camera URL>
+  "name": "prometnik-cams",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-26",
+  "workers_dev": true,
+  "observability": { "enabled": true }
+}

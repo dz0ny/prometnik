@@ -1,0 +1,16 @@
+{
+  "name": "prometnik-cams",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Edge cache for Prometnik webcam images",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.165.0"
+  }
+}
