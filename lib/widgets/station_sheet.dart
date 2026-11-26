@@ -6,12 +6,15 @@ import '../providers/weather_provider.dart';
 import 'app_sheet.dart';
 import 'interactive_webcam.dart';
 import 'weather_details.dart';
+import '../models/drsi_station.dart';
+import '../providers/drsi_provider.dart';
+import 'drsi_sheet.dart';
 
 /// Opens the station detail sheet for [stationId].
-void showStationSheet(BuildContext context, int stationId) {
+void showStationSheet(BuildContext context, int stationId, {String? roadId}) {
   showAppSheet<void>(
     context,
-    builder: (_) => StationSheet(stationId: stationId),
+    builder: (_) => StationSheet(stationId: stationId, roadId: roadId),
   );
 }
 
@@ -22,7 +25,11 @@ void showStationSheet(BuildContext context, int stationId) {
 class StationSheet extends StatelessWidget {
   final int stationId;
 
-  const StationSheet({super.key, required this.stationId});
+  /// Id of a DRSI road station at the same spot; its road-surface data is
+  /// shown in the same sheet.
+  final String? roadId;
+
+  const StationSheet({super.key, required this.stationId, this.roadId});
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +50,14 @@ class StationSheet extends StatelessWidget {
     }
     final cs = Theme.of(context).colorScheme;
     final updated = station.weather?.timestamp;
+    final road = roadId == null
+        ? null
+        : context.select<DrsiProvider, DrsiStation?>((p) {
+            for (final s in p.items) {
+              if (s.id == roadId) return s;
+            }
+            return null;
+          });
 
     return AppSheet(
       title: station.name.isEmpty ? 'Postaja' : station.name,
@@ -65,11 +80,39 @@ class StationSheet extends StatelessWidget {
           ),
           const SizedBox(height: 16),
         ],
-        if (station.weather == null)
-          _cameraOnlyNote(context)
-        else
-          WeatherDetailsView(weather: station.weather!),
+        if (road != null) ...[
+          _sectionLabel(cs, Icons.add_road, 'Cestišče'),
+          DrsiRoadSection(station: road, roadOnly: station.weather != null),
+          const SizedBox(height: 18),
+          if (station.weather != null)
+            _sectionLabel(cs, Icons.thermostat, 'Vreme'),
+        ],
+        if (station.weather != null)
+          WeatherDetailsView(weather: station.weather!)
+        else if (road == null)
+          _cameraOnlyNote(context),
       ],
+    );
+  }
+
+  Widget _sectionLabel(ColorScheme cs, IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: cs.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text(
+            text.toUpperCase(),
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: .6,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

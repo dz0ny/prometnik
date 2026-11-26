@@ -127,6 +127,60 @@ class _DrsiSheet extends StatelessWidget {
       ].join(' · '),
       leading: Icon(Icons.add_road, color: color),
       children: [
+        DrsiRoadSection(station: station),
+        if (camUrl.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: ColoredBox(
+                color: Colors.black,
+                child: LiveWebcamImage(
+                  url: camUrl,
+                  fit: BoxFit.contain,
+                  placeholder: (_) =>
+                      const Center(child: CircularProgressIndicator.adaptive()),
+                  errorWidget: (_) => const Center(
+                    child: Icon(Icons.videocam_off, color: Colors.white54),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          'Vir: Direkcija RS za infrastrukturo (CVIS)',
+          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+/// Road-surface block of a DRSI station: the risk card plus measurement
+/// tiles. With [roadOnly] the air readings (shown elsewhere, e.g. by a
+/// co-located weather station) are left out.
+class DrsiRoadSection extends StatelessWidget {
+  final DrsiStation station;
+  final bool roadOnly;
+
+  const DrsiRoadSection({
+    super.key,
+    required this.station,
+    this.roadOnly = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final risk = station.risk;
+    final color = drsiRiskColor(risk);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -181,38 +235,52 @@ class _DrsiSheet extends StatelessWidget {
             const gap = 8.0;
             final tileWidth = (constraints.maxWidth - gap) / 2;
             final tiles = <Widget>[
-              _metric(cs, Icons.add_road, 'Cesta', _t(station.roadTemp)),
-              _metric(cs, Icons.thermostat, 'Zrak', _t(station.airTemp)),
-              _metric(cs, Icons.ac_unit, 'Zmrzišče', _t(station.freezePoint)),
-              _metric(cs, Icons.water_drop, 'Rosišče', _t(station.dewPoint)),
-              _metric(
+              _drsiMetric(cs, Icons.add_road, 'Cesta', _t(station.roadTemp)),
+              if (!roadOnly)
+                _drsiMetric(cs, Icons.thermostat, 'Zrak', _t(station.airTemp)),
+              _drsiMetric(
                 cs,
-                Icons.opacity,
-                'Vlažnost',
-                station.humidity == null
-                    ? '–'
-                    : '${station.humidity!.round()} %',
+                Icons.ac_unit,
+                'Zmrzišče',
+                _t(station.freezePoint),
               ),
-              _metric(
-                cs,
-                Icons.air,
-                'Veter',
-                station.windKmh == null
-                    ? '–'
-                    : '${station.windKmh!.round()} km/h',
-                detail: station.gustKmh == null
-                    ? null
-                    : 'sunki ${station.gustKmh!.round()} km/h',
-              ),
+              if (!roadOnly)
+                _drsiMetric(
+                  cs,
+                  Icons.water_drop,
+                  'Rosišče',
+                  _t(station.dewPoint),
+                ),
+              if (!roadOnly)
+                _drsiMetric(
+                  cs,
+                  Icons.opacity,
+                  'Vlažnost',
+                  station.humidity == null
+                      ? '–'
+                      : '${station.humidity!.round()} %',
+                ),
+              if (!roadOnly)
+                _drsiMetric(
+                  cs,
+                  Icons.air,
+                  'Veter',
+                  station.windKmh == null
+                      ? '–'
+                      : '${station.windKmh!.round()} km/h',
+                  detail: station.gustKmh == null
+                      ? null
+                      : 'sunki ${station.gustKmh!.round()} km/h',
+                ),
               if (station.waterFilmMm != null)
-                _metric(
+                _drsiMetric(
                   cs,
                   Icons.waves,
                   'Vodni film',
                   '${WeatherFormat.decimal(station.waterFilmMm!, 2)} mm',
                 ),
               if (station.salinity != null)
-                _metric(
+                _drsiMetric(
                   cs,
                   Icons.grain,
                   'Slanost',
@@ -228,78 +296,52 @@ class _DrsiSheet extends StatelessWidget {
             );
           },
         ),
-        if (camUrl.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: ColoredBox(
-                color: Colors.black,
-                child: LiveWebcamImage(
-                  url: camUrl,
-                  fit: BoxFit.contain,
-                  placeholder: (_) =>
-                      const Center(child: CircularProgressIndicator.adaptive()),
-                  errorWidget: (_) => const Center(
-                    child: Icon(Icons.videocam_off, color: Colors.white54),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: 8),
-        Text(
-          'Vir: Direkcija RS za infrastrukturo (CVIS)',
-          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-        ),
       ],
     );
   }
+}
 
-  Widget _metric(
-    ColorScheme cs,
-    IconData icon,
-    String label,
-    String value, {
-    String? detail,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: cs.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: cs.onSurfaceVariant),
-                ),
+Widget _drsiMetric(
+  ColorScheme cs,
+  IconData icon,
+  String label,
+  String value, {
+  String? detail,
+}) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(
+      color: cs.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 16, color: cs.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: cs.onSurfaceVariant),
               ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-          ),
-          if (detail != null)
-            Text(
-              detail,
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
+        if (detail != null)
+          Text(
+            detail,
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+          ),
+      ],
+    ),
+  );
 }

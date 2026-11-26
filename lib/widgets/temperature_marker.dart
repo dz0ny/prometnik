@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../models/weather_station.dart';
 import '../theme/app_theme.dart';
 import 'webcam_thumbnail.dart';
+import '../models/drsi_station.dart';
+import 'drsi_sheet.dart' show drsiRiskColor;
 
 /// A map pin that shows a station's temperature in a coloured label with a
 /// downward pointer anchored to the exact location. Camera-only stations
@@ -19,12 +22,22 @@ class TemperatureMarker extends StatelessWidget {
   /// Size of that frame; the Marker must grow by [ThumbnailSize.extent].
   final ThumbnailSize thumbnailSize;
 
+  /// A DRSI road station at the same spot: its road temperature joins the
+  /// pill as a second segment tinted by ice risk, so one pin (and one tap)
+  /// covers both.
+  final DrsiStation? road;
+
+  /// Marker width for a pin with/without a road segment.
+  static double pinWidth({required bool hasWeather, required bool hasRoad}) =>
+      (hasWeather ? 60 : 34) + (hasRoad ? 50 : 0);
+
   const TemperatureMarker({
     super.key,
     required this.station,
     required this.onTap,
     this.thumbnailUrl,
     this.thumbnailSize = ThumbnailSize.small,
+    this.road,
   });
 
   @override
@@ -40,9 +53,19 @@ class TemperatureMarker extends StatelessWidget {
         : Colors.black87;
 
     final name = station.name.trim();
-    final semanticLabel = isCamera
-        ? 'Kamera ${name.isEmpty ? '' : name}'.trim()
-        : '${name.isEmpty ? 'Vremenska postaja' : name}, ${temp.round()} °C';
+    final road = this.road;
+    final roadTemp = road?.roadTemp;
+    final roadColor = road == null ? null : drsiRiskColor(road.risk);
+    final roadFg = roadColor == null || roadColor.computeLuminance() < 0.45
+        ? Colors.white
+        : Colors.black87;
+    final semanticLabel = [
+      isCamera
+          ? 'Kamera ${name.isEmpty ? '' : name}'.trim()
+          : '${name.isEmpty ? 'Vremenska postaja' : name}, ${temp.round()} °C',
+      if (road != null)
+        'cesta ${roadTemp == null ? 'ni podatka' : '${roadTemp.round()} °C'}',
+    ].join(', ');
 
     return Semantics(
       button: true,
@@ -65,18 +88,16 @@ class TemperatureMarker extends StatelessWidget {
                 WebcamThumbnail.sized(thumbnailUrl!, thumbnailSize),
                 const SizedBox(height: WebcamThumbnail.gap),
               ],
+              // One capsule: air temperature (or camera) and, when a road
+              // station shares the spot, its road temperature.
+              // White capsule with the coloured segments inset by the border
+              // width: clipping the colours *inside* the white (instead of
+              // stroking a border over them) leaves no colour fringe.
               Container(
-                padding: isCamera
-                    ? const EdgeInsets.all(5)
-                    : const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                padding: const EdgeInsets.all(1.5),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [_lighten(color, 0.10), color],
-                  ),
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white, width: 1.5),
                   boxShadow: const [
                     BoxShadow(
                       color: Colors.black38,
@@ -85,35 +106,93 @@ class TemperatureMarker extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: isCamera
-                    ? Icon(Icons.videocam, size: 14, color: fg)
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.thermostat, size: 13, color: fg),
-                          const SizedBox(width: 2),
-                          Text(
-                            '${temp.round()}°',
-                            style: TextStyle(
-                              color: fg,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              height: 1.0,
-                            ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12.5),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _segment(
+                          gradient: [_lighten(color, 0.10), color],
+                          icon: isCamera ? Icons.videocam : Icons.thermostat,
+                          text: isCamera ? null : '${temp.round()}°',
+                          fg: fg,
+                          left: true,
+                          right: road == null,
+                        ),
+                        if (road != null && roadColor != null)
+                          _segment(
+                            gradient: [_lighten(roadColor, 0.08), roadColor],
+                            icon: road.risk == RoadRisk.ok
+                                ? Icons.add_road
+                                : Icons.ac_unit,
+                            text: roadTemp == null
+                                ? '–'
+                                : '${roadTemp.round() == 0 ? 0 : roadTemp.round()}°',
+                            fg: roadFg,
+                            left: false,
+                            right: true,
                           ),
-                        ],
-                      ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
               // Pointer tail, drawn slightly under the pill to hide the seam.
               Transform.translate(
                 offset: const Offset(0, -2),
                 child: CustomPaint(
                   size: const Size(14, 8),
-                  painter: _PointerPainter(color: color),
+                  // Under a two-colour capsule the tail is white, so it never
+                  // clashes with the segment above it.
+                  painter: _PointerPainter(
+                    color: road == null ? color : Colors.white,
+                  ),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _segment({
+    required List<Color> gradient,
+    required IconData icon,
+    required String? text,
+    required Color fg,
+    required bool left,
+    required bool right,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: gradient,
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(left ? 8 : 6, 4, right ? 8 : 6, 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: fg),
+            if (text != null) ...[
+              const SizedBox(width: 2),
+              Text(
+                text,
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+
 import '../models/rest_area.dart';
 import '../models/drsi_station.dart';
 import '../models/burja_station.dart';
@@ -540,8 +541,8 @@ class MapTabState extends State<MapTab> {
     }
   }
 
-  void _openStation(WeatherStation station) =>
-      showStationSheet(context, station.stationId);
+  void _openStation(WeatherStation station, [DrsiStation? road]) =>
+      showStationSheet(context, station.stationId, roadId: road?.id);
 
   @override
   Widget build(BuildContext context) {
@@ -613,15 +614,15 @@ class MapTabState extends State<MapTab> {
                   if (_showRestAreas)
                     _RestAreasLayer(onTapGroup: _openRestAreaGroup),
                   if (_showBurja) const _BurjaLayer(),
-                  _WeatherStationsLayer(
+                  // Weather + DRSI road stations; ones sharing a spot are
+                  // one pin.
+                  _StationsLayer(
                     showWeather: _showWeather,
                     showCameras: _showCameras,
+                    showRoad: _showDrsi && DrsiService.isSupported,
                     thumbnailSize: _thumbnailSize,
                     onTap: _openStation,
                   ),
-                  // DRSI road stations sit above the weather pins, which
-                  // often share the spot.
-                  if (_showDrsi && DrsiService.isSupported) const _DrsiLayer(),
                   // Traffic events render on top of the camera/weather pins
                   // and their webcam frames, so a frame never buries one.
                   _EventsLayer(
@@ -1381,83 +1382,136 @@ class _BurjaLayer extends StatelessWidget {
   }
 }
 
-class _WeatherStationsLayer extends StatelessWidget {
+/// Weather stations and DRSI road stations in one layer. A road station
+/// within [_pairMeters] of a visible weather station is folded into that
+/// station's pin (one capsule, one tap, one sheet); the rest keep their own.
+class _StationsLayer extends StatefulWidget {
   final bool showWeather;
   final bool showCameras;
+  final bool showRoad;
 
   /// Thumbnail tier for the current zoom, or null for plain pins.
   final ThumbnailSize? thumbnailSize;
-  final void Function(WeatherStation) onTap;
+  final void Function(WeatherStation, DrsiStation?) onTap;
 
-  const _WeatherStationsLayer({
+  const _StationsLayer({
     required this.showWeather,
     required this.showCameras,
+    required this.showRoad,
     required this.thumbnailSize,
     required this.onTap,
   });
+
+  @override
+  State<_StationsLayer> createState() => _StationsLayerState();
+}
+
+class _StationsLayerState extends State<_StationsLayer> {
+  static const double _pairMeters = 400;
+
+  List<WeatherStation>? _forStations;
+  List<DrsiStation>? _forRoads;
+  String _forFlags = '';
+  Map<int, DrsiStation> _roadByStation = const {};
+  List<DrsiStation> _loneRoads = const [];
+
+  bool _visible(WeatherStation s) =>
+      s.hasWeather ? widget.showWeather : widget.showCameras;
+
+  /// Pair each road station with its nearest visible weather station.
+  void _pair(List<WeatherStation> stations, List<DrsiStation> roads) {
+    const distance = Distance();
+    final byStation = <int, DrsiStation>{};
+    final lone = <DrsiStation>[];
+    for (final road in roads) {
+      WeatherStation? best;
+      var bestD = _pairMeters;
+      for (final s in stations) {
+        if (!_visible(s) || byStation.containsKey(s.stationId)) continue;
+        // Cheap reject before the exact distance.
+        if ((s.position.latitude - road.position.latitude).abs() > 0.01) {
+          continue;
+        }
+        final d = distance(s.position, road.position);
+        if (d <= bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      if (best != null) {
+        byStation[best.stationId] = road;
+      } else {
+        lone.add(road);
+      }
+    }
+    _roadByStation = byStation;
+    _loneRoads = lone;
+  }
 
   @override
   Widget build(BuildContext context) {
     final stations = context.select<WeatherProvider, List<WeatherStation>>(
       (p) => p.stations,
     );
+    final roads = widget.showRoad
+        ? context.select<DrsiProvider, List<DrsiStation>>((p) => p.items)
+        : const <DrsiStation>[];
+    final flags = '${widget.showWeather}${widget.showCameras}';
+    if (!identical(stations, _forStations) ||
+        !identical(roads, _forRoads) ||
+        flags != _forFlags) {
+      _forStations = stations;
+      _forRoads = roads;
+      _forFlags = flags;
+      _pair(stations, roads);
+    }
     // Frames refresh in 5-minute steps so rebuilds reuse the cached image.
     final bucket = webcamCacheBucket();
     return MarkerLayer(
       markers: [
         for (final station in stations)
-          if (station.hasWeather ? showWeather : showCameras)
-            _stationMarker(station, bucket),
+          if (_visible(station)) _stationMarker(station, bucket),
+        for (final road in _loneRoads)
+          Marker(
+            key: ValueKey('drsi:${road.id}'),
+            point: road.position,
+            width: 56,
+            height: 40,
+            child: DrsiMarker(
+              station: road,
+              onTap: () => showDrsiSheet(context, road),
+            ),
+          ),
       ],
     );
   }
 
   Marker _stationMarker(WeatherStation station, int bucket) {
-    final size = thumbnailSize;
+    final size = widget.thumbnailSize;
+    final road = _roadByStation[station.stationId];
     final thumb = size != null && station.cameraLink.isNotEmpty
         ? station.cameraUrlWithBuster(bucket)
         : null;
+    final pinWidth = TemperatureMarker.pinWidth(
+      hasWeather: station.hasWeather,
+      hasRoad: road != null,
+    );
     return Marker(
       key: ValueKey('st:${station.stationId}'),
       point: station.position,
       width: thumb != null && size != null
-          ? size.width
-          : (station.hasWeather ? 60 : 34),
-      height: 44 + (thumb != null && size != null ? size.extent : 0),
+          ? math.max(size.width, pinWidth)
+          : pinWidth,
+      height: 46 + (thumb != null && size != null ? size.extent : 0),
       // Bottom of the box (the pointer tip) sits on the coordinate.
       alignment: Alignment.topCenter,
       child: TemperatureMarker(
         station: station,
+        road: road,
         thumbnailUrl: thumb,
         thumbnailSize: size ?? ThumbnailSize.small,
-        onTap: () => onTap(station),
+        onTap: () => widget.onTap(station, road),
       ),
-    );
-  }
-}
-
-class _DrsiLayer extends StatelessWidget {
-  const _DrsiLayer();
-
-  @override
-  Widget build(BuildContext context) {
-    final items = context.select<DrsiProvider, List<DrsiStation>>(
-      (p) => p.items,
-    );
-    return MarkerLayer(
-      markers: [
-        for (final st in items)
-          Marker(
-            key: ValueKey('drsi:${st.id}'),
-            point: st.position,
-            width: 56,
-            height: 26,
-            child: DrsiMarker(
-              station: st,
-              onTap: () => showDrsiSheet(context, st),
-            ),
-          ),
-      ],
     );
   }
 }
