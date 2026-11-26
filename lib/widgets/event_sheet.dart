@@ -559,6 +559,8 @@ class EventCameraCard extends StatelessWidget {
                   imageUrl: url,
                   cacheKey: url,
                   useOldImageOnUrlChange: true,
+                  // Card-sized preview; the fullscreen viewer loads full res.
+                  memCacheWidth: 800,
                   fit: BoxFit.cover,
                   placeholder: (_, _) => const Center(
                     child: SizedBox(

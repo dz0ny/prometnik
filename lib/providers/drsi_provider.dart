@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/drsi_station.dart';
@@ -19,7 +20,10 @@ class DrsiProvider extends ChangeNotifier {
   String? _error;
   DateTime? _lastUpdated;
 
-  List<DrsiStation> get items => List.unmodifiable(_items);
+  // Cached read-only view: same identity until new data arrives, so
+  // widgets can memoize derived lists (and skip rebuilds) by identity.
+  List<DrsiStation> _view = const [];
+  List<DrsiStation> get items => _view;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasData => _items.isNotEmpty;
@@ -48,6 +52,7 @@ class DrsiProvider extends ChangeNotifier {
     if (!hasData) notifyListeners();
     try {
       _items = await _service.fetch();
+      _view = UnmodifiableListView(_items);
       _lastUpdated = DateTime.now();
       _error = null;
     } on Exception catch (e) {

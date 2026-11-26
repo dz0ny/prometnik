@@ -4,6 +4,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../models/rest_area.dart';
+import '../models/drsi_station.dart';
+import '../models/burja_station.dart';
+import '../models/traffic_camera.dart';
 import '../models/traffic_event.dart';
 import '../models/weather_station.dart';
 import '../providers/alerts_controller.dart';
@@ -142,6 +145,19 @@ class MapTabState extends State<MapTab> {
 
   static int _compareMapDrawOrder(TrafficEvent a, TrafficEvent b) =>
       _compareMapNotices(b, a);
+
+  /// Called by [_EventsLayer] when the filtered event list changes; refresh
+  /// the affected-road highlights only when the visible set really changed.
+  void _onVisibleEventsChanged(List<TrafficEvent> visibleEvents) {
+    final sig = visibleEvents
+        .map((e) => '${e.id}:${e.severity.index}')
+        .join('|');
+    if (sig == _roadsSig) return;
+    _roadsSig = sig;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _refreshEventRoads(visibleEvents),
+    );
+  }
 
   /// Recompute the highlighted roads inside each visible event's affected area
   /// when the visible event set changes.
@@ -284,7 +300,7 @@ class MapTabState extends State<MapTab> {
     );
   }
 
-  List<_RestAreaGroup> _restAreaGroups(List<RestArea> areas) {
+  static List<_RestAreaGroup> _restAreaGroups(List<RestArea> areas) {
     const distance = Distance();
     final groups = <_RestAreaGroup>[];
     for (final area in areas) {
@@ -376,9 +392,6 @@ class MapTabState extends State<MapTab> {
       },
     );
   }
-
-  bool _stationVisible(WeatherStation s) =>
-      s.hasWeather ? _showWeather : _showCameras;
 
   int get _activeMapFilterCount =>
       (_showWeather ? 0 : 1) +
@@ -538,35 +551,18 @@ class MapTabState extends State<MapTab> {
   @override
   Widget build(BuildContext context) {
     // No app bar: the map fills the whole screen for maximum map area.
+    // The map itself watches no provider: each marker layer below is its own
+    // widget that rebuilds only when its own data changes. Previously any
+    // provider notifying (a GPS fix, a poll, a loading flag) rebuilt every
+    // marker on the map.
     return AdaptiveScaffold(
-      body: Consumer<WeatherProvider>(
-        builder: (context, provider, _) {
+      body: Builder(
+        builder: (context) {
           final cs = Theme.of(context).colorScheme;
           final isDark = Theme.of(context).brightness == Brightness.dark;
-
-          // Events shown on the map (after the severity filter).
-          final visibleEvents =
-              context
-                  .watch<EventsProvider>()
-                  .events
-                  .where((e) => _eventFilter.contains(e.severity))
-                  .toList()
-                ..sort(_compareMapDrawOrder);
-          final myPos = context.watch<AlertsController>().position;
-          final myLocation = myPos == null
-              ? null
-              : LatLng(myPos.latitude, myPos.longitude);
-
-          // Recompute affected-road highlights only when the visible set changes.
-          final sig = visibleEvents
-              .map((e) => '${e.id}:${e.severity.index}')
-              .join('|');
-          if (sig != _roadsSig) {
-            _roadsSig = sig;
-            WidgetsBinding.instance.addPostFrameCallback(
-              (_) => _refreshEventRoads(visibleEvents),
-            );
-          }
+          final showWeatherError = context.select<WeatherProvider, bool>(
+            (p) => p.error != null && !p.hasData,
+          );
 
           return Stack(
             children: [
@@ -598,123 +594,30 @@ class MapTabState extends State<MapTab> {
                         polylines: _eventRoads,
                       ),
                     ),
-                  // DARS cameras.
-                  if (_showDarsCameras)
-                    MarkerLayer(
-                      markers: [
-                        for (final cam
-                            in context.watch<CamerasProvider>().visibleCameras(
-                              context.watch<WeatherProvider>().stations,
-                            ))
-                          Marker(
-                            point: cam.position,
-                            width: 26,
-                            height: 26,
-                            child: _CameraMarker(
-                              onTap: () => showCameraSheet(context, cam),
-                            ),
-                          ),
-                      ],
-                    ),
-                  // Rest areas with live parking availability.
+                  if (_showDarsCameras) const _DarsCamerasLayer(),
                   if (_showRestAreas)
-                    MarkerLayer(
-                      markers: [
-                        for (final group in _restAreaGroups(
-                          context.watch<RestAreasProvider>().items,
-                        ))
-                          Marker(
-                            point: group.position,
-                            width: group.markerWidth,
-                            height: group.markerHeight,
-                            child: _RestAreaMarker(
-                              areas: group.areas,
-                              onTap: () => _openRestAreaGroup(group.areas),
-                            ),
-                          ),
-                      ],
-                    ),
-                  // Burja (crosswind) measurement points.
-                  if (_showBurja)
-                    MarkerLayer(
-                      markers: [
-                        for (final st in context.watch<BurjaProvider>().items)
-                          Marker(
-                            point: st.position,
-                            width: 28,
-                            height: 28,
-                            child: _BurjaMarker(
-                              color: burjaColor(st.level),
-                              onTap: () => showBurjaSheet(context, st),
-                            ),
-                          ),
-                      ],
-                    ),
-                  MarkerLayer(
-                    markers: [
-                      for (final station in provider.stations)
-                        if (_stationVisible(station))
-                          Marker(
-                            point: station.position,
-                            width: station.hasWeather ? 60 : 34,
-                            height: 44,
-                            alignment: Alignment.topCenter,
-                            child: TemperatureMarker(
-                              station: station,
-                              onTap: () => _openStation(station),
-                            ),
-                          ),
-                    ],
+                    _RestAreasLayer(onTapGroup: _openRestAreaGroup),
+                  if (_showBurja) const _BurjaLayer(),
+                  _WeatherStationsLayer(
+                    showWeather: _showWeather,
+                    showCameras: _showCameras,
+                    onTap: _openStation,
                   ),
-                  // DRSI road weather stations: road temperature + ice risk.
-                  // Above the weather pins, which often sit on the same spot.
-                  if (_showDrsi && DrsiService.isSupported)
-                    MarkerLayer(
-                      markers: [
-                        for (final st in context.watch<DrsiProvider>().items)
-                          Marker(
-                            point: st.position,
-                            width: 56,
-                            height: 26,
-                            child: DrsiMarker(
-                              station: st,
-                              onTap: () => showDrsiSheet(context, st),
-                            ),
-                          ),
-                      ],
-                    ),
+                  // DRSI road stations sit above the weather pins, which
+                  // often share the spot.
+                  if (_showDrsi && DrsiService.isSupported) const _DrsiLayer(),
                   // Traffic events render on top of the weather markers.
-                  MarkerLayer(
-                    markers: [
-                      for (final event in visibleEvents)
-                        Marker(
-                          point: event.position,
-                          width: 28,
-                          height: 28,
-                          child: EventMarker(
-                            event: event,
-                            onTap: () => showEventSheet(context, event),
-                          ),
-                        ),
-                    ],
+                  _EventsLayer(
+                    filterKey: _eventFilter.map((e) => e.index).toList()
+                      ..sort(),
+                    onVisibleChanged: _onVisibleEventsChanged,
                   ),
-                  // The user's current location.
-                  if (myLocation != null)
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: myLocation,
-                          width: 22,
-                          height: 22,
-                          child: const _UserDot(),
-                        ),
-                      ],
-                    ),
+                  const _UserLocationLayer(),
                   buildBaseMapAttribution(_baseMap),
                 ],
               ),
-              if (provider.error != null && !provider.hasData)
-                _errorBanner(context, provider),
+              if (showWeatherError)
+                _errorBanner(context, context.read<WeatherProvider>()),
               SafeArea(
                 child: Align(
                   alignment: Alignment.topRight,
@@ -1090,6 +993,258 @@ class _MapButton extends StatelessWidget {
           child: Icon(icon, color: cs.primary, size: 22),
         ),
       ),
+    );
+  }
+}
+
+// ── Marker layers ────────────────────────────────────────────────────────
+// Each layer selects only the list it draws, so it rebuilds when that list's
+// identity changes (providers replace it on each successful poll), not when
+// an unrelated provider notifies. Derived lists are memoized on the inputs'
+// identity so grouping/sorting runs once per data refresh, not per build.
+
+/// Memoizes `compute(a, b)` while both inputs are identical to the last call.
+class _Memo<A, B, R> {
+  A? _a;
+  B? _b;
+  late R _r;
+  bool _has = false;
+
+  R call(A a, B b, R Function(A, B) compute) {
+    if (!_has || !identical(a, _a) || !identical(b, _b)) {
+      _a = a;
+      _b = b;
+      _r = compute(a, b);
+      _has = true;
+    }
+    return _r;
+  }
+}
+
+class _DarsCamerasLayer extends StatefulWidget {
+  const _DarsCamerasLayer();
+
+  @override
+  State<_DarsCamerasLayer> createState() => _DarsCamerasLayerState();
+}
+
+class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
+  final _memo =
+      _Memo<List<TrafficCamera>, List<WeatherStation>, List<Marker>>();
+
+  @override
+  Widget build(BuildContext context) {
+    final cameras = context.select<CamerasProvider, List<TrafficCamera>>(
+      (p) => p.cameras,
+    );
+    final stations = context.select<WeatherProvider, List<WeatherStation>>(
+      (p) => p.stations,
+    );
+    // De-duplicating against weather-station cameras is O(cameras*stations);
+    // do it once per data refresh, not on every build.
+    final markers = _memo(
+      cameras,
+      stations,
+      (_, st) => [
+        for (final cam in context.read<CamerasProvider>().visibleCameras(st))
+          Marker(
+            point: cam.position,
+            width: 26,
+            height: 26,
+            child: _CameraMarker(onTap: () => showCameraSheet(context, cam)),
+          ),
+      ],
+    );
+    return MarkerLayer(markers: markers);
+  }
+}
+
+class _RestAreasLayer extends StatefulWidget {
+  final void Function(List<RestArea>) onTapGroup;
+  const _RestAreasLayer({required this.onTapGroup});
+
+  @override
+  State<_RestAreasLayer> createState() => _RestAreasLayerState();
+}
+
+class _RestAreasLayerState extends State<_RestAreasLayer> {
+  final _memo = _Memo<List<RestArea>, Object?, List<_RestAreaGroup>>();
+
+  @override
+  Widget build(BuildContext context) {
+    final items = context.select<RestAreasProvider, List<RestArea>>(
+      (p) => p.items,
+    );
+    final groups = _memo(
+      items,
+      null,
+      (a, _) => MapTabState._restAreaGroups(a),
+    );
+    return MarkerLayer(
+      markers: [
+        for (final group in groups)
+          Marker(
+            point: group.position,
+            width: group.markerWidth,
+            height: group.markerHeight,
+            child: _RestAreaMarker(
+              areas: group.areas,
+              onTap: () => widget.onTapGroup(group.areas),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _BurjaLayer extends StatelessWidget {
+  const _BurjaLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    final items = context.select<BurjaProvider, List<BurjaStation>>(
+      (p) => p.items,
+    );
+    return MarkerLayer(
+      markers: [
+        for (final st in items)
+          Marker(
+            point: st.position,
+            width: 28,
+            height: 28,
+            child: _BurjaMarker(
+              color: burjaColor(st.level),
+              onTap: () => showBurjaSheet(context, st),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _WeatherStationsLayer extends StatelessWidget {
+  final bool showWeather;
+  final bool showCameras;
+  final void Function(WeatherStation) onTap;
+
+  const _WeatherStationsLayer({
+    required this.showWeather,
+    required this.showCameras,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final stations = context.select<WeatherProvider, List<WeatherStation>>(
+      (p) => p.stations,
+    );
+    return MarkerLayer(
+      markers: [
+        for (final station in stations)
+          if (station.hasWeather ? showWeather : showCameras)
+            Marker(
+              point: station.position,
+              width: station.hasWeather ? 60 : 34,
+              height: 44,
+              alignment: Alignment.topCenter,
+              child: TemperatureMarker(
+                station: station,
+                onTap: () => onTap(station),
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+class _DrsiLayer extends StatelessWidget {
+  const _DrsiLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    final items = context.select<DrsiProvider, List<DrsiStation>>(
+      (p) => p.items,
+    );
+    return MarkerLayer(
+      markers: [
+        for (final st in items)
+          Marker(
+            point: st.position,
+            width: 56,
+            height: 26,
+            child: DrsiMarker(
+              station: st,
+              onTap: () => showDrsiSheet(context, st),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _EventsLayer extends StatefulWidget {
+  /// Sorted severity indexes that pass the filter.
+  final List<int> filterKey;
+  final void Function(List<TrafficEvent>) onVisibleChanged;
+
+  const _EventsLayer({required this.filterKey, required this.onVisibleChanged});
+
+  @override
+  State<_EventsLayer> createState() => _EventsLayerState();
+}
+
+class _EventsLayerState extends State<_EventsLayer> {
+  List<TrafficEvent>? _source;
+  String _filter = '';
+  List<TrafficEvent> _visible = const [];
+
+  @override
+  Widget build(BuildContext context) {
+    final events = context.select<EventsProvider, List<TrafficEvent>>(
+      (p) => p.events,
+    );
+    final filter = widget.filterKey.join(',');
+    if (!identical(events, _source) || filter != _filter) {
+      _source = events;
+      _filter = filter;
+      final allowed = widget.filterKey.toSet();
+      _visible =
+          events.where((e) => allowed.contains(e.severity.index)).toList()
+            ..sort(MapTabState._compareMapDrawOrder);
+      widget.onVisibleChanged(_visible);
+    }
+    return MarkerLayer(
+      markers: [
+        for (final event in _visible)
+          Marker(
+            point: event.position,
+            width: 28,
+            height: 28,
+            child: EventMarker(
+              event: event,
+              onTap: () => showEventSheet(context, event),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _UserLocationLayer extends StatelessWidget {
+  const _UserLocationLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    // Rebuilds on GPS updates without touching the other layers.
+    final pos = context.select<AlertsController, LatLng?>((a) {
+      final p = a.position;
+      return p == null ? null : LatLng(p.latitude, p.longitude);
+    });
+    if (pos == null) return const SizedBox.shrink();
+    return MarkerLayer(
+      markers: [
+        Marker(point: pos, width: 22, height: 22, child: const _UserDot()),
+      ],
     );
   }
 }

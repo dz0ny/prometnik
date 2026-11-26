@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/travel_time.dart';
@@ -20,7 +21,10 @@ class TravelTimesProvider extends ChangeNotifier {
   String? _error;
   DateTime? _lastUpdated;
 
-  List<TravelTime> get items => List.unmodifiable(_items);
+  // Cached read-only view: same identity until new data arrives, so
+  // widgets can memoize derived lists (and skip rebuilds) by identity.
+  List<TravelTime> _view = const [];
+  List<TravelTime> get items => _view;
   bool get isLoading => _isLoading;
   String? get error => _error;
   DateTime? get lastUpdated => _lastUpdated;
@@ -52,6 +56,7 @@ class TravelTimesProvider extends ChangeNotifier {
 
     try {
       _items = await _service.fetchTravelTimes();
+      _view = UnmodifiableListView(_items);
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {

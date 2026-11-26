@@ -754,6 +754,8 @@ class _CameraRow extends StatelessWidget {
                   child: CachedNetworkImage(
                     imageUrl: url,
                     cacheKey: url,
+                    // 64x48 thumbnail: decode small, not the full frame.
+                    memCacheWidth: 192,
                     fit: BoxFit.cover,
                     placeholder: (_, _) =>
                         const ColoredBox(color: Colors.black),

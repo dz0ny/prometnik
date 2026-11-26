@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/weather_station.dart';
@@ -19,7 +20,10 @@ class WeatherProvider extends ChangeNotifier {
   String? _error;
   DateTime? _lastUpdated;
 
-  List<WeatherStation> get stations => List.unmodifiable(_stations);
+  // Cached read-only view: same identity until new data arrives, so
+  // widgets can memoize derived lists (and skip rebuilds) by identity.
+  List<WeatherStation> _view = const [];
+  List<WeatherStation> get stations => _view;
   bool get isLoading => _isLoading;
   String? get error => _error;
   DateTime? get lastUpdated => _lastUpdated;
@@ -68,6 +72,7 @@ class WeatherProvider extends ChangeNotifier {
     try {
       final fetched = await _service.fetchStations();
       _stations = fetched;
+      _view = UnmodifiableListView(_stations);
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {

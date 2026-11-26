@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/traffic_event.dart';
@@ -20,7 +21,10 @@ class EventsProvider extends ChangeNotifier {
   String? _error;
   DateTime? _lastUpdated;
 
-  List<TrafficEvent> get events => List.unmodifiable(_events);
+  // Cached read-only view: same identity until new data arrives, so
+  // widgets can memoize derived lists (and skip rebuilds) by identity.
+  List<TrafficEvent> _view = const [];
+  List<TrafficEvent> get events => _view;
   bool get isLoading => _isLoading;
   String? get error => _error;
   DateTime? get lastUpdated => _lastUpdated;
@@ -59,6 +63,7 @@ class EventsProvider extends ChangeNotifier {
 
     try {
       _events = await _service.fetchEvents();
+      _view = UnmodifiableListView(_events);
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {

@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
@@ -22,7 +23,10 @@ class CamerasProvider extends ChangeNotifier {
   String? _error;
   DateTime? _lastUpdated;
 
-  List<TrafficCamera> get cameras => List.unmodifiable(_cameras);
+  // Cached read-only view: same identity until new data arrives, so
+  // widgets can memoize derived lists (and skip rebuilds) by identity.
+  List<TrafficCamera> _view = const [];
+  List<TrafficCamera> get cameras => _view;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasData => _cameras.isNotEmpty;
@@ -69,6 +73,7 @@ class CamerasProvider extends ChangeNotifier {
 
     try {
       _cameras = await _service.fetchCameras();
+      _view = UnmodifiableListView(_cameras);
       _lastUpdated = DateTime.now();
       _error = null;
     } catch (e) {
