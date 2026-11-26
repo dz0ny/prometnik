@@ -75,10 +75,10 @@ function withHeaders(res, maxAge, state) {
   return out;
 }
 
-export async function fetchFrame(cam) {
+export async function fetchFrame(cam, timeoutMs = ORIGIN_TIMEOUT_MS) {
   const res = await fetch(cam.toString(), {
     headers: { 'User-Agent': 'prometnik-cams/1.0 (+https://github.com/dz0ny/prometnik)' },
-    signal: AbortSignal.timeout(ORIGIN_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const type = res.headers.get('Content-Type') || '';
   if (!res.ok || !type.startsWith('image/')) {

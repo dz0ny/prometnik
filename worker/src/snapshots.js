@@ -14,7 +14,11 @@ import { cameraUrl } from './index.js';
 // which keeps a run well under the Workers per-invocation subrequest limit.
 export const SLICES = 60;
 const HISTORY_HOURS = 24;
-const CONCURRENCY = 5;
+const CONCURRENCY = 4;
+// The camera hosts are slow and stall in bursts; the cron can afford to wait
+// much longer than a viewer's request.
+const CRON_FETCH_TIMEOUT_MS = 25000;
+const CAMERAS_KEY = 'meta/cameras.json';
 
 const CAMERA_FEEDS = [
   // DARS traffic cameras (GeoJSON, properties.Image).
@@ -187,6 +191,29 @@ export async function handleStatus(env) {
   return json({ lastRun, feeds }, 200);
 }
 
+/**
+ * The camera list for a cron run. A feed that times out would shrink the
+ * list for that run, so the largest recent list is kept in R2 and used
+ * whenever the live one comes back smaller.
+ */
+async function knownCameras(env) {
+  const live = await listCameras();
+  let saved = [];
+  try {
+    const obj = await env.SNAPS.get(CAMERAS_KEY);
+    if (obj) saved = (await obj.json()).cameras ?? [];
+  } catch {
+    // no saved list yet
+  }
+  if (live.length >= saved.length * 0.9) {
+    if (live.length !== saved.length) {
+      await env.SNAPS.put(CAMERAS_KEY, JSON.stringify({ cameras: live }));
+    }
+    return live;
+  }
+  return saved;
+}
+
 async function listCameras() {
   const bodies = await Promise.all(
     CAMERA_FEEDS.map(async (feed) => {
@@ -268,22 +295,29 @@ async function captureSliceInner(env, now, fetchFrame) {
 
   const slice = now.getUTCMinutes() % SLICES;
   const stamp = hourStamp(now);
-  const cameras = await listCameras();
+  const cameras = await knownCameras(env);
 
+  // This minute's slice, plus the previous minute's as a second chance for
+  // cameras that timed out then (same hour only; stored ones are skipped).
+  const retrySlice = slice > 0 ? slice - 1 : -1;
   const mine = [];
   for (const cam of cameras) {
     const id = await cameraId(cam);
-    if (sliceOf(id) === slice) mine.push({ cam, key: `h/${id}/${stamp}.jpg` });
+    const s = sliceOf(id);
+    if (s === slice || s === retrySlice) {
+      mine.push({ cam, key: `h/${id}/${stamp}.jpg` });
+    }
   }
 
   let stored = 0;
   let failed = 0;
+  const errors = [];
   const queue = [...mine];
   const worker = async () => {
     for (let job = queue.shift(); job; job = queue.shift()) {
       try {
         if (await env.SNAPS.head(job.key)) continue; // already have this hour
-        const res = await fetchFrame(new URL(job.cam));
+        const res = await fetchFrame(new URL(job.cam), CRON_FETCH_TIMEOUT_MS);
         const wrote = await storeHourly(
           env,
           job.cam,
@@ -292,8 +326,9 @@ async function captureSliceInner(env, now, fetchFrame) {
           now,
         );
         if (wrote) stored++;
-      } catch {
+      } catch (err) {
         failed++;
+        if (errors.length < 3) errors.push(`${job.cam.split('/').pop()}: ${err.message}`);
       }
     }
   };
@@ -301,7 +336,7 @@ async function captureSliceInner(env, now, fetchFrame) {
   console.log(
     `slice ${slice} @${stamp}: ${mine.length} cameras, ${stored} stored, ${failed} failed (of ${cameras.length} total)`,
   );
-  return { slice, stamp, cameras: mine.length, stored, failed, total: cameras.length, weather };
+  return { slice, stamp, cameras: mine.length, stored, failed, total: cameras.length, weather, errors };
 }
 
 /** GET /history?u=… */
