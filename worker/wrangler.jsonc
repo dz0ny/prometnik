@@ -3,7 +3,7 @@
   // https://prometnik-cams.dz0ny.workers.dev/cam?u=<encoded camera URL>
   "name": "prometnik-cams",
   "main": "src/index.js",
-  "compatibility_date": "2026-11-26",
+  "compatibility_date": "2026-11-25",
   "workers_dev": true,
   "observability": { "enabled": true },
   // Hourly webcam history (see src/snapshots.js): each run snapshots one
