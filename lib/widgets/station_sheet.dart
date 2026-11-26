@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../models/weather_station.dart';
 import '../providers/weather_provider.dart';
 import 'app_sheet.dart';
@@ -59,6 +60,7 @@ class StationSheet extends StatelessWidget {
           InteractiveWebcam(
             station: station,
             autoRefresh: const Duration(seconds: 60),
+            showHistory: true,
             overlayTemp: station.temperatureC,
           ),
           const SizedBox(height: 16),

@@ -1,9 +1,9 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+
 import '../models/traffic_camera.dart';
 import '../models/weather_station.dart';
 import '../providers/cameras_provider.dart';
@@ -16,6 +16,7 @@ import '../widgets/camera_sheet.dart';
 import '../widgets/filter_sheet.dart';
 import '../widgets/webcam_image.dart';
 import '../widgets/weather_details.dart';
+import '../widgets/live_webcam_image.dart';
 
 /// Section title for the favourites group, rendered as full-width webcam cards.
 const String _kFavoritesTitle = '★ Priljubljene';
@@ -760,15 +761,13 @@ class _CameraRow extends StatelessWidget {
                 height: 48,
                 child: ColoredBox(
                   color: Colors.black,
-                  child: CachedNetworkImage(
-                    imageUrl: url,
-                    cacheKey: url,
+                  child: LiveWebcamImage(
+                    url: url,
                     // 64x48 thumbnail: decode small, not the full frame.
                     memCacheWidth: 192,
                     fit: BoxFit.cover,
-                    placeholder: (_, _) =>
-                        const ColoredBox(color: Colors.black),
-                    errorWidget: (_, _, _) => const Icon(
+                    placeholder: (_) => const ColoredBox(color: Colors.black),
+                    errorWidget: (_) => const Icon(
                       Icons.videocam_off,
                       color: Colors.white38,
                       size: 20,
@@ -847,9 +846,8 @@ class _Chevron extends StatelessWidget {
     return Icon(
       Icons.chevron_right,
       size: 20,
-      color: Theme.of(
-        context,
-      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+      color: Theme.of(context).colorScheme.onSurfaceVariant
+          .withValues(alpha: 0.5),
     );
   }
 }

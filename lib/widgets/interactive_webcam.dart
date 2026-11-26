@@ -1,14 +1,17 @@
 import 'dart:async';
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../models/weather_station.dart';
 import '../theme/app_theme.dart';
 import 'weather_details.dart' show WeatherFormat;
 import 'webcam_image.dart';
 import 'sheet_snack.dart';
+import 'live_webcam_image.dart';
+import '../services/webcam_store.dart';
 
 /// A small dark translucent icon button drawn over the webcam image, with a
 /// 44pt hit area around its 28pt visual.
@@ -72,6 +75,9 @@ class InteractiveWebcam extends StatefulWidget {
   /// Whether to show a visible refresh button next to the fullscreen one.
   final bool showRefreshButton;
 
+  /// Show the "Zadnjih 24 ur" strip of hourly snapshots under the image.
+  final bool showHistory;
+
   const InteractiveWebcam({
     super.key,
     required this.station,
@@ -81,6 +87,7 @@ class InteractiveWebcam extends StatefulWidget {
     this.overlayName,
     this.overlayTemp,
     this.showRefreshButton = true,
+    this.showHistory = false,
   });
 
   @override
@@ -90,6 +97,11 @@ class InteractiveWebcam extends StatefulWidget {
 class _InteractiveWebcamState extends State<InteractiveWebcam> {
   int _key = DateTime.now().millisecondsSinceEpoch;
   Timer? _timer;
+
+  /// Selected history snapshot (null = live) and the latest live frame time,
+  /// which reloads the history strip when a new frame arrives.
+  WebcamFrame? _snapshot;
+  DateTime? _liveAt;
 
   @override
   void initState() {
@@ -140,6 +152,24 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
 
   @override
   Widget build(BuildContext context) {
+    final image = _buildImage(context);
+    if (!widget.showHistory || widget.station.cameraLink.isEmpty) return image;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        image,
+        WebcamHistoryStrip(
+          url: widget.station.cameraUrlWithBuster(_key),
+          selected: _snapshot,
+          refreshToken: _liveAt,
+          onSelect: (f) => setState(() => _snapshot = f),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImage(BuildContext context) {
     final hasOverlay = widget.overlayName != null;
     final hasCamera = widget.station.cameraLink.isNotEmpty;
     return GestureDetector(
@@ -158,8 +188,23 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                   station: widget.station,
                   refreshKey: _key,
                   fit: BoxFit.contain,
+                  snapshot: _snapshot,
+                  onFrame: (f) {
+                    if (_liveAt != f.at && mounted) {
+                      // Defer: onFrame can fire during the child's build.
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) setState(() => _liveAt = f.at);
+                      });
+                    }
+                  },
                 ),
               ),
+              if (_snapshot != null)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: WebcamSnapshotBadge(frame: _snapshot!),
+                ),
               if (hasOverlay)
                 const DecoratedBox(
                   decoration: BoxDecoration(
@@ -239,9 +284,8 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                               // Cold colours are dark violet/blue: pick a
                               // readable foreground from the background.
                               color:
-                                  AppTheme.temperatureColor(
-                                        widget.overlayTemp,
-                                      ).computeLuminance() <
+                                  AppTheme.temperatureColor(widget.overlayTemp)
+                                          .computeLuminance() <
                                       0.45
                                   ? Colors.white
                                   : Colors.black,
@@ -297,19 +341,17 @@ class _FullscreenWebcamState extends State<_FullscreenWebcam> {
                 minScale: 1,
                 maxScale: 5,
                 child: Center(
-                  child: CachedNetworkImage(
-                    imageUrl: url,
-                    cacheKey: url,
-                    useOldImageOnUrlChange: true,
+                  child: LiveWebcamImage(
+                    url: url,
                     fit: BoxFit.contain,
-                    placeholder: (_, _) => Center(
+                    placeholder: (_) => Center(
                       child: PlatformInfo.isIOS
                           ? const CupertinoActivityIndicator(
                               color: Colors.white,
                             )
                           : const CircularProgressIndicator(),
                     ),
-                    errorWidget: (_, _, _) => const Icon(
+                    errorWidget: (_) => const Icon(
                       Icons.broken_image_outlined,
                       color: Colors.white54,
                       size: 48,

@@ -1,6 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
 import '../models/weather_station.dart';
+import 'live_webcam_image.dart';
+import '../services/webcam_store.dart';
 
 /// Displays a station's webcam frame. A [refreshKey] (e.g. a millisecond
 /// timestamp) is appended to the URL to bust the cache and pull a fresh frame.
@@ -10,12 +12,19 @@ class WebcamImage extends StatelessWidget {
   final BoxFit fit;
   final double? height;
 
+  /// History snapshot to show instead of the live frame (see
+  /// [WebcamHistoryStrip]).
+  final WebcamFrame? snapshot;
+  final ValueChanged<WebcamFrame>? onFrame;
+
   const WebcamImage({
     super.key,
     required this.station,
     required this.refreshKey,
     this.fit = BoxFit.cover,
     this.height,
+    this.snapshot,
+    this.onFrame,
   });
 
   @override
@@ -24,18 +33,17 @@ class WebcamImage extends StatelessWidget {
       return _placeholder(context, Icons.videocam_off, 'Ni kamere');
     }
     final url = station.cameraUrlWithBuster(refreshKey);
-    return CachedNetworkImage(
-      imageUrl: url,
+    return LiveWebcamImage(
+      url: url,
+      snapshot: snapshot,
+      onFrame: onFrame,
       // Bypass the disk cache between refreshes; the buster makes keys unique.
-      cacheKey: url,
       // Keep showing the previous frame until the refreshed one decodes.
-      useOldImageOnUrlChange: true,
       fit: fit,
       height: height,
       width: double.infinity,
-      fadeInDuration: const Duration(milliseconds: 200),
-      placeholder: (context, _) => _placeholder(context, null, null),
-      errorWidget: (context, _, _) => _placeholder(
+      placeholder: (context) => _placeholder(context, null, null),
+      errorWidget: (context) => _placeholder(
         context,
         Icons.broken_image_outlined,
         'Slika ni na voljo',

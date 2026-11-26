@@ -1,5 +1,4 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -21,6 +20,7 @@ import 'event_visuals.dart';
 import 'weather_details.dart' show WeatherFormat;
 import 'sheet_snack.dart';
 import 'app_sheet.dart';
+import 'live_webcam_image.dart';
 
 /// Present [event] details in a modal bottom sheet. Shared by the map markers
 /// and the events list.
@@ -522,21 +522,19 @@ class EventCameraCard extends StatelessWidget {
             children: [
               ColoredBox(
                 color: Colors.black,
-                child: CachedNetworkImage(
-                  imageUrl: url,
-                  cacheKey: url,
-                  useOldImageOnUrlChange: true,
+                child: LiveWebcamImage(
+                  url: url,
                   // Card-sized preview; the fullscreen viewer loads full res.
                   memCacheWidth: 800,
                   fit: BoxFit.cover,
-                  placeholder: (_, _) => const Center(
+                  placeholder: (_) => const Center(
                     child: SizedBox(
                       width: 24,
                       height: 24,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
-                  errorWidget: (_, _, _) => const Icon(
+                  errorWidget: (_) => const Icon(
                     Icons.broken_image_outlined,
                     color: Colors.white54,
                     size: 40,

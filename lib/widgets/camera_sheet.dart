@@ -1,13 +1,16 @@
 import 'dart:async';
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../models/traffic_camera.dart';
 import 'sheet_snack.dart';
 import 'app_sheet.dart';
+import 'live_webcam_image.dart';
+import '../services/webcam_store.dart';
 
 /// Present a DARS camera in a modal bottom sheet (live image, auto-refresh,
 /// tap for fullscreen). Shared by the map markers.
@@ -27,6 +30,10 @@ class CameraSheet extends StatefulWidget {
 class _CameraSheetState extends State<CameraSheet> {
   int _key = DateTime.now().millisecondsSinceEpoch;
   Timer? _timer;
+
+  /// Selected history snapshot (null = live) and the latest live frame time.
+  WebcamFrame? _snapshot;
+  DateTime? _liveAt;
 
   @override
   void initState() {
@@ -101,28 +108,51 @@ class _CameraSheetState extends State<CameraSheet> {
                 aspectRatio: 16 / 9,
                 child: ColoredBox(
                   color: Colors.black,
-                  child: CachedNetworkImage(
-                    imageUrl: cam.imageUrlWithBuster(_key),
-                    cacheKey: cam.imageUrlWithBuster(_key),
-                    useOldImageOnUrlChange: true,
-                    fit: BoxFit.contain,
-                    placeholder: (_, _) => const Center(
-                      child: SizedBox(
-                        width: 26,
-                        height: 26,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      LiveWebcamImage(
+                        url: cam.imageUrlWithBuster(_key),
+                        fit: BoxFit.contain,
+                        snapshot: _snapshot,
+                        onFrame: (f) {
+                          if (_liveAt != f.at) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) setState(() => _liveAt = f.at);
+                            });
+                          }
+                        },
+                        placeholder: (_) => const Center(
+                          child: SizedBox(
+                            width: 26,
+                            height: 26,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                        errorWidget: (_) => const Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white54,
+                          size: 48,
+                        ),
                       ),
-                    ),
-                    errorWidget: (_, _, _) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white54,
-                      size: 48,
-                    ),
+                      if (_snapshot != null)
+                        Positioned(
+                          top: 8,
+                          left: 8,
+                          child: WebcamSnapshotBadge(frame: _snapshot!),
+                        ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
+        ),
+        WebcamHistoryStrip(
+          url: cam.imageUrlWithBuster(_key),
+          selected: _snapshot,
+          refreshToken: _liveAt,
+          onSelect: (f) => setState(() => _snapshot = f),
         ),
         if (cam.description.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -168,13 +198,12 @@ class _FullscreenCamera extends StatelessWidget {
                 minScale: 1,
                 maxScale: 5,
                 child: Center(
-                  child: CachedNetworkImage(
-                    imageUrl: url,
-                    cacheKey: url,
+                  child: LiveWebcamImage(
+                    url: url,
                     fit: BoxFit.contain,
-                    placeholder: (_, _) =>
+                    placeholder: (_) =>
                         const CupertinoActivityIndicator(color: Colors.white),
-                    errorWidget: (_, _, _) => const Icon(
+                    errorWidget: (_) => const Icon(
                       Icons.broken_image_outlined,
                       color: Colors.white54,
                       size: 48,

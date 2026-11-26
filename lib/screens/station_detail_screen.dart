@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../providers/favorites_provider.dart';
 import '../providers/weather_provider.dart';
 import '../router/navigation_notifier.dart';
@@ -106,6 +107,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                 InteractiveWebcam(
                   station: station,
                   autoRefresh: const Duration(seconds: 60),
+                  showHistory: true,
                 ),
                 const SizedBox(height: 8),
                 Row(

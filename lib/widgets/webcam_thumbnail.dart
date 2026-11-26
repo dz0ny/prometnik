@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import 'live_webcam_image.dart';
 
 /// Length of one webcam refresh step. Thumbnail URLs carry a cache-buster
 /// rounded to this step, so map rebuilds within it reuse the cached frame.
@@ -80,17 +81,14 @@ class WebcamThumbnail extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(6.5),
-        child: CachedNetworkImage(
-          imageUrl: url,
-          cacheKey: url,
+        child: LiveWebcamImage(
+          url: url,
           // Decode at display size (3x for retina, capped), not the full frame.
           memCacheWidth: math.min((width * 3).round(), 600),
-          useOldImageOnUrlChange: true,
           fit: BoxFit.cover,
-          fadeInDuration: const Duration(milliseconds: 150),
-          placeholder: (_, _) =>
+          placeholder: (_) =>
               ColoredBox(color: Colors.black.withValues(alpha: 0.12)),
-          errorWidget: (_, _, _) => ColoredBox(
+          errorWidget: (_) => ColoredBox(
             color: Colors.black.withValues(alpha: 0.25),
             child: const Center(
               child: Icon(Icons.videocam_off, size: 16, color: Colors.white70),

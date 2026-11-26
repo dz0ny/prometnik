@@ -1,9 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
 import '../models/drsi_station.dart';
 import '../theme/app_theme.dart';
 import 'app_sheet.dart';
 import 'weather_details.dart' show WeatherFormat;
+import 'live_webcam_image.dart';
 
 const _riskColors = <RoadRisk, Color>{
   RoadRisk.ok: Color(0xFF43A047),
@@ -235,13 +236,12 @@ class _DrsiSheet extends StatelessWidget {
               aspectRatio: 16 / 9,
               child: ColoredBox(
                 color: Colors.black,
-                child: CachedNetworkImage(
-                  imageUrl: camUrl,
-                  cacheKey: camUrl,
+                child: LiveWebcamImage(
+                  url: camUrl,
                   fit: BoxFit.contain,
-                  placeholder: (_, _) =>
+                  placeholder: (_) =>
                       const Center(child: CircularProgressIndicator.adaptive()),
-                  errorWidget: (_, _, _) => const Center(
+                  errorWidget: (_) => const Center(
                     child: Icon(Icons.videocam_off, color: Colors.white54),
                   ),
                 ),

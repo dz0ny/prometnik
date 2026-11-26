@@ -22,6 +22,9 @@ dependencies:
 
   # Image caching (webcam thumbnails)
   cached_network_image: any
+  # Webcam frame store (latest + 24h hourly history); also used by
+  # cached_network_image.
+  flutter_cache_manager: any
 
   # Routing
   go_router: any
