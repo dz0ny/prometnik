@@ -3,8 +3,10 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/traffic_camera.dart';
+import 'sheet_snack.dart';
 
 /// Present a DARS camera in a modal bottom sheet (live image, auto-refresh,
 /// tap for fullscreen). Shared by the map markers.
@@ -64,13 +66,19 @@ class _CameraSheetState extends State<CameraSheet> {
 
   Future<void> _openBrowser() async {
     final uri = Uri.tryParse(widget.camera.imageUrl);
-    if (uri == null) return;
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    if (uri == null || !uri.hasScheme) return;
+    bool opened;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on PlatformException {
+      opened = false;
+    }
+    if (!opened) {
       if (mounted) {
-        AdaptiveSnackBar.show(
+        showSheetSnack(
           context,
           message: 'Povezave ni mogoče odpreti',
-          type: AdaptiveSnackBarType.error,
+          error: true,
         );
       }
     }
@@ -118,6 +126,7 @@ class _CameraSheetState extends State<CameraSheet> {
                       child: CachedNetworkImage(
                         imageUrl: cam.imageUrlWithBuster(_key),
                         cacheKey: cam.imageUrlWithBuster(_key),
+                        useOldImageOnUrlChange: true,
                         fit: BoxFit.contain,
                         placeholder: (_, _) => const Center(
                           child: SizedBox(
@@ -139,7 +148,10 @@ class _CameraSheetState extends State<CameraSheet> {
               const SizedBox(height: 12),
               Text(
                 cam.title.isEmpty ? 'Kamera' : cam.title,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               if (cam.description.isNotEmpty) ...[
                 const SizedBox(height: 6),
@@ -152,12 +164,19 @@ class _CameraSheetState extends State<CameraSheet> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.place_outlined, size: 15, color: cs.onSurfaceVariant),
+                    Icon(
+                      Icons.place_outlined,
+                      size: 15,
+                      color: cs.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         cam.region,
-                        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],

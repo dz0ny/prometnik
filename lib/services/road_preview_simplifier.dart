@@ -24,7 +24,7 @@ class RoadPreviewSimplifier {
       _coord(n),
       toleranceMeters.round(),
     ].join(':');
-    return _roadsInCache.putIfAbsent(key, () async {
+    return _cached(_roadsInCache, key, () async {
       final roads = await RoadsService.instance.roadsIn(w, s, e, n);
       return simplifyRoads(roads, toleranceMeters: toleranceMeters);
     });
@@ -48,10 +48,31 @@ class RoadPreviewSimplifier {
       _coord(n),
       toleranceMeters.round(),
     ].join(':');
-    return _roadsByRefsInCache.putIfAbsent(key, () async {
+    return _cached(_roadsByRefsInCache, key, () async {
       final roads = await RoadsService.instance.roadsByRefsIn(refs, w, s, e, n);
       return simplifyRoads(roads, toleranceMeters: toleranceMeters);
     });
+  }
+
+  static const int _maxCacheEntries = 200;
+
+  /// Memoise [load] under [key]; failures are evicted so they can be retried,
+  /// and the cache is bounded (oldest entry dropped first).
+  static Future<List<RoadLine>> _cached(
+    Map<String, Future<List<RoadLine>>> cache,
+    String key,
+    Future<List<RoadLine>> Function() load,
+  ) {
+    final hit = cache.remove(key);
+    if (hit != null) return cache[key] = hit; // re-insert as most recent
+    if (cache.length >= _maxCacheEntries) cache.remove(cache.keys.first);
+    final future = load();
+    cache[key] = future;
+    future.catchError((Object _) {
+      if (identical(cache[key], future)) cache.remove(key);
+      return const <RoadLine>[];
+    });
+    return future;
   }
 
   static List<RoadLine> simplifyRoads(
@@ -94,7 +115,11 @@ class RoadPreviewSimplifier {
     var maxDistance = 0.0;
     var index = first;
     for (var i = first + 1; i < last; i++) {
-      final distance = _pointSegmentDistance(points[i], points[first], points[last]);
+      final distance = _pointSegmentDistance(
+        points[i],
+        points[first],
+        points[last],
+      );
       if (distance > maxDistance) {
         index = i;
         maxDistance = distance;

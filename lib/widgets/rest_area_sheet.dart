@@ -1,7 +1,9 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/rest_area.dart';
+import 'sheet_snack.dart';
 
 const _amenityIcons = <String, (IconData, String)>{
   'fuel': (Icons.local_gas_station, 'Bencin'),
@@ -52,12 +54,18 @@ class _RestAreaSheet extends StatelessWidget {
         : Uri.parse(
             'https://www.google.com/maps/dir/?api=1&destination=$lat,$lon&travelmode=driving',
           );
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    bool opened;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on PlatformException {
+      opened = false;
+    }
+    if (!opened) {
       if (context.mounted) {
-        AdaptiveSnackBar.show(
+        showSheetSnack(
           context,
           message: 'Navigacije ni mogoče odpreti',
-          type: AdaptiveSnackBarType.error,
+          error: true,
         );
       }
     }
@@ -156,19 +164,19 @@ class _RestAreaSheet extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             // Static capacity.
-            Row(
+            // Wrap: long working hours or large text would overflow a Row.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 _capChip(cs, Icons.directions_car, '${area.carSpaces} avto'),
-                const SizedBox(width: 8),
                 _capChip(
                   cs,
                   Icons.local_shipping,
                   '${area.truckSpaces} tovornih',
                 ),
-                if (area.workingHours.isNotEmpty) ...[
-                  const SizedBox(width: 8),
+                if (area.workingHours.isNotEmpty)
                   _capChip(cs, Icons.schedule, area.workingHours),
-                ],
               ],
             ),
             if (area.amenities.isNotEmpty) ...[

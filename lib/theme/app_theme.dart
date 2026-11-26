@@ -5,6 +5,15 @@ import 'package:flutter/material.dart';
 class AppTheme {
   AppTheme._();
 
+  /// [c] darkened enough to read as text on a light surface. Yellows and
+  /// ambers (burja, roadworks) are unreadable on white otherwise; dark mode
+  /// keeps the original colour.
+  static Color readableText(Color c, Brightness brightness) {
+    if (brightness == Brightness.dark) return c;
+    final hsl = HSLColor.fromColor(c);
+    return hsl.lightness > 0.38 ? hsl.withLightness(0.38).toColor() : c;
+  }
+
   // ── Color schemes ──────────────────────────────────────────────────────
   // Cool "night sky / road" palette for Promet (dark) and a light variant
   // that keeps the same sky-blue accent for use under the system theme.

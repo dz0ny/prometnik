@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../models/weather_station.dart';
 import '../theme/app_theme.dart';
 import 'webcam_image.dart';
+import 'sheet_snack.dart';
 
 /// A webcam frame that:
 ///  - tap → opens a zoomable fullscreen viewer,
@@ -45,9 +46,12 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
   void initState() {
     super.initState();
     final interval = widget.autoRefresh;
-    if (interval != null) {
+    // No point refreshing a station that has no camera.
+    if (interval != null && widget.station.cameraLink.isNotEmpty) {
       _timer = Timer.periodic(interval, (_) {
-        if (mounted) setState(() => _key = DateTime.now().millisecondsSinceEpoch);
+        if (mounted) {
+          setState(() => _key = DateTime.now().millisecondsSinceEpoch);
+        }
       });
     }
   }
@@ -61,7 +65,7 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
   void _refresh() {
     HapticFeedback.mediumImpact();
     setState(() => _key = DateTime.now().millisecondsSinceEpoch);
-    AdaptiveSnackBar.show(
+    showSheetSnack(
       context,
       message: 'Osvežujem sliko…',
       duration: const Duration(milliseconds: 900),
@@ -88,9 +92,10 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
   @override
   Widget build(BuildContext context) {
     final hasOverlay = widget.overlayName != null;
+    final hasCamera = widget.station.cameraLink.isNotEmpty;
     return GestureDetector(
-      onTap: _openFullscreen,
-      onLongPress: _refresh,
+      onTap: hasCamera ? _openFullscreen : null,
+      onLongPress: hasCamera ? _refresh : null,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(widget.borderRadius),
         child: AspectRatio(
@@ -118,18 +123,23 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                   ),
                 ),
               // Fullscreen affordance.
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(8),
+              if (hasCamera)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.fullscreen,
+                      size: 18,
+                      color: Colors.white,
+                    ),
                   ),
-                  child: const Icon(Icons.fullscreen, size: 18, color: Colors.white),
                 ),
-              ),
               if (hasOverlay)
                 Positioned(
                   left: 14,
@@ -147,7 +157,9 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 20,
-                            shadows: [Shadow(blurRadius: 6, color: Colors.black87)],
+                            shadows: [
+                              Shadow(blurRadius: 6, color: Colors.black87),
+                            ],
                           ),
                         ),
                       ),
@@ -159,7 +171,9 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: AppTheme.temperatureColor(widget.overlayTemp),
+                            color: AppTheme.temperatureColor(
+                              widget.overlayTemp,
+                            ),
                             borderRadius: BorderRadius.circular(14),
                             boxShadow: const [
                               BoxShadow(blurRadius: 6, color: Colors.black54),
@@ -167,8 +181,16 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                           ),
                           child: Text(
                             '${widget.overlayTemp!.toStringAsFixed(1)} °C',
-                            style: const TextStyle(
-                              color: Colors.black,
+                            style: TextStyle(
+                              // Cold colours are dark violet/blue: pick a
+                              // readable foreground from the background.
+                              color:
+                                  AppTheme.temperatureColor(
+                                        widget.overlayTemp,
+                                      ).computeLuminance() <
+                                      0.45
+                                  ? Colors.white
+                                  : Colors.black,
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                             ),
@@ -224,6 +246,7 @@ class _FullscreenWebcamState extends State<_FullscreenWebcam> {
                   child: CachedNetworkImage(
                     imageUrl: url,
                     cacheKey: url,
+                    useOldImageOnUrlChange: true,
                     fit: BoxFit.contain,
                     placeholder: (_, _) => Center(
                       child: PlatformInfo.isIOS

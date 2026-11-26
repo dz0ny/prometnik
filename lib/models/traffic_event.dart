@@ -12,6 +12,11 @@ class TrafficEvent {
   final String id;
   final LatLng position;
 
+  /// Used when a feature has no geometry (Slovenia centre). Such events must
+  /// not count as "nearby" for anyone living close to it.
+  static const LatLng fallbackPosition = LatLng(46.1512, 14.9955);
+  bool get hasPosition => position != fallbackPosition;
+
   final String title;
   final String description;
 
@@ -123,7 +128,8 @@ class TrafficEvent {
 
   /// Build from a single GeoJSON `Feature` of the `agg.dogodki.v2` collection.
   factory TrafficEvent.fromFeature(Map<String, dynamic> feature) {
-    final props = (feature['properties'] as Map?)?.cast<String, dynamic>() ?? {};
+    final props =
+        (feature['properties'] as Map?)?.cast<String, dynamic>() ?? {};
     final geom = (feature['geometry'] as Map?)?.cast<String, dynamic>() ?? {};
 
     LatLng parsePoint(Map<String, dynamic> g) {
@@ -134,20 +140,24 @@ class TrafficEvent {
         final lat = (coords[1] as num).toDouble();
         return LatLng(lat, lon);
       }
-      return const LatLng(46.1512, 14.9955); // Slovenia centre fallback
+      return fallbackPosition;
     }
 
     bool toBool(dynamic v) => v == true || v == 'true' || v == 1;
     int toInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
-    String toStr(dynamic v) => (v as String?)?.trim() ?? '';
+    String toStr(dynamic v) => v == null ? '' : '$v'.trim();
+    // The feed sends offsets (e.g. +01:00); DateTime.tryParse returns UTC for
+    // those, so convert to local time before anything formats them.
     DateTime? toDate(dynamic v) =>
-        (v is String && v.isNotEmpty) ? DateTime.tryParse(v) : null;
+        (v is String && v.isNotEmpty) ? DateTime.tryParse(v)?.toLocal() : null;
 
     // ServiceArea.bbox is [minLon, minLat, maxLon, maxLat].
     LatLng? areaSW, areaNE;
     final sa = props['ServiceArea'];
     if (sa is Map && sa['bbox'] is List && (sa['bbox'] as List).length == 4) {
-      final bb = (sa['bbox'] as List).map((e) => (e as num).toDouble()).toList();
+      final bb = (sa['bbox'] as List)
+          .map((e) => (e as num).toDouble())
+          .toList();
       if (bb[2] > bb[0] && bb[3] > bb[1]) {
         areaSW = LatLng(bb[1], bb[0]);
         areaNE = LatLng(bb[3], bb[2]);

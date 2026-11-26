@@ -1,5 +1,6 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/favorites_provider.dart';
@@ -23,8 +24,14 @@ class StationDetailScreen extends StatefulWidget {
 class _StationDetailScreenState extends State<StationDetailScreen> {
   Future<void> _openCameraInBrowser(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    if (uri == null || !uri.hasScheme) return;
+    bool opened;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on PlatformException {
+      opened = false;
+    }
+    if (!opened) {
       if (mounted) {
         AdaptiveSnackBar.show(
           context,
@@ -40,6 +47,13 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
     return Consumer<WeatherProvider>(
       builder: (context, provider, _) {
         final station = provider.byId(widget.stationId);
+        if (station == null && provider.isLoading) {
+          // Deep link opened before the weather feed arrived.
+          return const AdaptiveScaffold(
+            appBar: AdaptiveAppBar(title: 'Postaja'),
+            body: Center(child: CircularProgressIndicator.adaptive()),
+          );
+        }
         if (station == null) {
           return const AdaptiveScaffold(
             appBar: AdaptiveAppBar(title: 'Postaja'),

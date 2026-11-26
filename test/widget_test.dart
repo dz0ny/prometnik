@@ -56,6 +56,7 @@ void main() {
       expect(station.position.latitude, lessThanOrEqualTo(90));
       expect(station.position.longitude, lessThanOrEqualTo(180));
       expect(station.position.latitude, closeTo(45.957236, 1e-3));
+      expect(station.position.longitude, closeTo(15.489224, 1e-3));
     });
 
     test('cache-busting URL appends a timestamp param', () {

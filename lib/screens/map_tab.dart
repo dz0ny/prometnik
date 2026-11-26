@@ -12,9 +12,9 @@ import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/rest_areas_provider.dart';
 import '../providers/weather_provider.dart';
-import '../services/map_tile_cache_service.dart';
 import '../services/prefs.dart';
 import '../services/roads_service.dart';
+import '../widgets/base_tile_layer.dart';
 import '../widgets/burja_sheet.dart';
 import '../widgets/camera_sheet.dart';
 import '../widgets/event_marker.dart';
@@ -45,6 +45,18 @@ class MapTabState extends State<MapTab> {
 
   bool _mapReady = false;
 
+  // Base map tiles: OpenStreetMap or Seznam (Mapy.cz), as in gozdar.
+  BaseMap _baseMap = BaseMap.saved;
+
+  void _toggleBaseMap() {
+    setState(() {
+      _baseMap = _baseMap == BaseMap.openStreetMap
+          ? BaseMap.seznam
+          : BaseMap.openStreetMap;
+    });
+    BaseMap.saved = _baseMap;
+  }
+
   // Map layer filters.
   static const List<EventSeverity> _severities = [
     EventSeverity.closed,
@@ -62,10 +74,13 @@ class MapTabState extends State<MapTab> {
   // Affected-area road highlights for the visible events.
   List<Polyline<TrafficEvent>> _eventRoads = const [];
   String _roadsSig = '';
+  // Bumped per refresh so a slower, older refresh can't overwrite a newer one.
+  int _roadsGen = 0;
 
   @override
   void dispose() {
     _eventRoadHitNotifier.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -125,7 +140,22 @@ class MapTabState extends State<MapTab> {
   /// Recompute the highlighted roads inside each visible event's affected area
   /// when the visible event set changes.
   Future<void> _refreshEventRoads(List<TrafficEvent> events) async {
+    final gen = ++_roadsGen;
     final lines = <Polyline<TrafficEvent>>[];
+    try {
+      await _collectEventRoads(events, lines);
+    } on Exception catch (e, s) {
+      debugPrint('event roads failed: $e\n$s');
+      _roadsSig = ''; // retry on the next build
+      return;
+    }
+    if (mounted && gen == _roadsGen) setState(() => _eventRoads = lines);
+  }
+
+  Future<void> _collectEventRoads(
+    List<TrafficEvent> events,
+    List<Polyline<TrafficEvent>> lines,
+  ) async {
     for (final e in events) {
       if (!e.hasArea) continue;
       final sw = e.areaSouthWest!, ne = e.areaNorthEast!;
@@ -166,7 +196,6 @@ class MapTabState extends State<MapTab> {
         }
       }
     }
-    if (mounted) setState(() => _eventRoads = lines);
   }
 
   void _openEventRoadNotices(List<TrafficEvent> events) {
@@ -321,7 +350,9 @@ class MapTabState extends State<MapTab> {
                             area.title.isEmpty ? 'Počivališče' : area.title,
                           ),
                           subtitle: area.hasLiveAvailability
-                              ? Text('${area.available} / ${area.total} prostih')
+                              ? Text(
+                                  '${area.available} / ${area.total} prostih',
+                                )
                               : const Text('Ni podatkov o zasedenosti'),
                           onTap: () {
                             Navigator.of(context).pop();
@@ -496,12 +527,13 @@ class MapTabState extends State<MapTab> {
           final isDark = Theme.of(context).brightness == Brightness.dark;
 
           // Events shown on the map (after the severity filter).
-          final visibleEvents = context
-              .watch<EventsProvider>()
-              .events
-              .where((e) => _eventFilter.contains(e.severity))
-              .toList()
-            ..sort(_compareMapDrawOrder);
+          final visibleEvents =
+              context
+                  .watch<EventsProvider>()
+                  .events
+                  .where((e) => _eventFilter.contains(e.severity))
+                  .toList()
+                ..sort(_compareMapDrawOrder);
           final myPos = context.watch<AlertsController>().position;
           final myLocation = myPos == null
               ? null
@@ -536,19 +568,7 @@ class MapTabState extends State<MapTab> {
                   onMapReady: () => _mapReady = true,
                 ),
                 children: [
-                  TileLayer(
-                    // Light: OpenStreetMap. Dark: CARTO Dark Matter basemap.
-                    urlTemplate: isDark
-                        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    tileProvider: MapTileCacheService.instance.createTileProvider(),
-                    subdomains: isDark
-                        ? const ['a', 'b', 'c', 'd']
-                        : const [],
-                    retinaMode: isDark && RetinaMode.isHighDensity(context),
-                    userAgentPackageName: 'dev.dz0ny.promet',
-                    maxZoom: 19,
-                  ),
+                  buildBaseTileLayer(context, base: _baseMap, isDark: isDark),
                   // Affected-area roads for the visible events (under markers).
                   if (_eventRoads.isNotEmpty)
                     GestureDetector(
@@ -600,8 +620,7 @@ class MapTabState extends State<MapTab> {
                   if (_showBurja)
                     MarkerLayer(
                       markers: [
-                        for (final st
-                            in context.watch<BurjaProvider>().items)
+                        for (final st in context.watch<BurjaProvider>().items)
                           Marker(
                             point: st.position,
                             width: 28,
@@ -656,6 +675,7 @@ class MapTabState extends State<MapTab> {
                         ),
                       ],
                     ),
+                  buildBaseMapAttribution(_baseMap),
                 ],
               ),
               if (provider.error != null && !provider.hasData)
@@ -677,9 +697,18 @@ class MapTabState extends State<MapTab> {
                   alignment: Alignment.bottomRight,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: _MapButton(
-                      icon: Icons.my_location,
-                      onTap: _goToMyLocation,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (BaseMap.seznamAvailable) ...[
+                          _MapButton(icon: Icons.layers, onTap: _toggleBaseMap),
+                          const SizedBox(height: 10),
+                        ],
+                        _MapButton(
+                          icon: Icons.my_location,
+                          onTap: _goToMyLocation,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -754,7 +783,11 @@ class _CameraMarker extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 1.5),
           boxShadow: const [
-            BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1)),
+            BoxShadow(
+              color: Colors.black38,
+              blurRadius: 3,
+              offset: Offset(0, 1),
+            ),
           ],
         ),
         child: const Icon(Icons.photo_camera, size: 13, color: Colors.white),
@@ -770,10 +803,7 @@ class _RestAreaMarker extends StatelessWidget {
   final List<RestArea> areas;
   final VoidCallback onTap;
 
-  const _RestAreaMarker({
-    required this.areas,
-    required this.onTap,
-  });
+  const _RestAreaMarker({required this.areas, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -803,7 +833,14 @@ class _RestAreaMarker extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Center(
+      // The Marker box is only an estimate from digit counts (used for
+      // positioning/culling); let the pills take their real size instead of
+      // throwing RenderFlex overflows when fonts render wider or taller.
+      child: OverflowBox(
+        minWidth: 0,
+        minHeight: 0,
+        maxWidth: double.infinity,
+        maxHeight: double.infinity,
         child: Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
@@ -964,7 +1001,11 @@ class _BurjaMarker extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 1.5),
           boxShadow: const [
-            BoxShadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1)),
+            BoxShadow(
+              color: Colors.black38,
+              blurRadius: 3,
+              offset: Offset(0, 1),
+            ),
           ],
         ),
         child: const Icon(Icons.air, size: 15, color: Colors.white),

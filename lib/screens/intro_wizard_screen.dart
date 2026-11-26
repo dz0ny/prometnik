@@ -130,12 +130,18 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
   Future<void> _enableNotifications() async {
     if (_requestingNotifications || _notificationsEnabled) return;
     setState(() => _requestingNotifications = true);
-    final enabled = await NotificationsService.instance.requestPermission();
-    if (mounted) {
-      setState(() {
-        _notificationsEnabled = enabled;
-        _requestingNotifications = false;
-      });
+    var enabled = false;
+    try {
+      enabled = await NotificationsService.instance.requestPermission();
+    } on Exception catch (e) {
+      debugPrint('notification permission failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _notificationsEnabled = enabled;
+          _requestingNotifications = false;
+        });
+      }
     }
   }
 

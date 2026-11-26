@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -5,9 +6,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../providers/alerts_controller.dart';
 import '../providers/events_provider.dart';
-import '../services/map_tile_cache_service.dart';
 import '../services/roads_service.dart';
 import '../widgets/event_marker.dart';
+import '../widgets/base_tile_layer.dart';
 
 /// Full-screen map where the user taps roads to add/remove them from the
 /// watched set. Tapped point snaps to the nearest road's `ref`.
@@ -25,26 +26,43 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
   List<List<LatLng>> _watchedLines = const [];
   List<List<LatLng>> _exampleLines = const []; // illustrative "A1" highlight
   bool _showNotice = true;
+  int _reloadGen = 0;
 
   @override
   void initState() {
     super.initState();
-    _reload();
-    _loadExample();
+    unawaited(_reload());
+    unawaited(_loadExample());
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
   }
 
   Future<void> _reload() async {
+    // Quick taps start overlapping reloads; only the newest may win.
+    final gen = ++_reloadGen;
     final refs = context.read<AlertsController>().watchedRoads;
-    final roads = await RoadsService.instance.roadsByRefs(refs);
-    if (mounted) {
-      setState(() => _watchedLines = roads.map((r) => r.points).toList());
+    try {
+      final roads = await RoadsService.instance.roadsByRefs(refs);
+      if (mounted && gen == _reloadGen) {
+        setState(() => _watchedLines = roads.map((r) => r.points).toList());
+      }
+    } on Exception catch (e) {
+      debugPrint('watched roads failed: $e');
     }
   }
 
   Future<void> _loadExample() async {
-    final roads = await RoadsService.instance.roadsByRefs({'A1'});
-    if (mounted) {
-      setState(() => _exampleLines = roads.map((r) => r.points).toList());
+    try {
+      final roads = await RoadsService.instance.roadsByRefs({'A1'});
+      if (mounted) {
+        setState(() => _exampleLines = roads.map((r) => r.points).toList());
+      }
+    } on Exception catch (e) {
+      debugPrint('example road failed: $e');
     }
   }
 
@@ -104,16 +122,7 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
               onTap: (_, p) => _onTap(p),
             ),
             children: [
-              TileLayer(
-                urlTemplate: isDark
-                    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                    : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                tileProvider: MapTileCacheService.instance.createTileProvider(),
-                subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
-                retinaMode: isDark && RetinaMode.isHighDensity(context),
-                userAgentPackageName: 'dev.dz0ny.promet',
-                maxZoom: 19,
-              ),
+              buildBaseTileLayer(context, base: BaseMap.saved, isDark: isDark),
               // Example road (dashed) shown until the user picks something.
               if (showExample)
                 PolylineLayer(
@@ -123,9 +132,7 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
                         points: pts,
                         color: cs.secondary.withValues(alpha: 0.8),
                         strokeWidth: 4,
-                        pattern: StrokePattern.dashed(
-                          segments: const [12, 8],
-                        ),
+                        pattern: StrokePattern.dashed(segments: const [12, 8]),
                       ),
                   ],
                 ),
@@ -185,7 +192,8 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
                           IconButton(
                             icon: const Icon(Icons.close),
                             visualDensity: VisualDensity.compact,
-                            onPressed: () => setState(() => _showNotice = false),
+                            onPressed: () =>
+                                setState(() => _showNotice = false),
                           ),
                         ],
                       ),
@@ -194,7 +202,10 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
                         'Tapni cesto na karti, da jo dodaš med spremljane — '
                         'obvestili te bomo o dogodkih na njej. Tapni znova za '
                         'odstranitev.\n\nPrekinjena črta je primer (avtocesta A1).',
-                        style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          height: 1.4,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       AdaptiveButton(

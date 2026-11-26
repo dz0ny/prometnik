@@ -28,13 +28,18 @@ class WebcamImage extends StatelessWidget {
       imageUrl: url,
       // Bypass the disk cache between refreshes; the buster makes keys unique.
       cacheKey: url,
+      // Keep showing the previous frame until the refreshed one decodes.
+      useOldImageOnUrlChange: true,
       fit: fit,
       height: height,
       width: double.infinity,
       fadeInDuration: const Duration(milliseconds: 200),
       placeholder: (context, _) => _placeholder(context, null, null),
-      errorWidget: (context, _, _) =>
-          _placeholder(context, Icons.broken_image_outlined, 'Slika ni na voljo'),
+      errorWidget: (context, _, _) => _placeholder(
+        context,
+        Icons.broken_image_outlined,
+        'Slika ni na voljo',
+      ),
     );
   }
 

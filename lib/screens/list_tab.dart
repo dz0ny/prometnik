@@ -149,8 +149,9 @@ class _ListTabState extends State<ListTab> {
       return groups;
     }
 
-    final favStations =
-        stations.where((s) => favs.isFavorite(s.stationId)).toList();
+    final favStations = stations
+        .where((s) => favs.isFavorite(s.stationId))
+        .toList();
     if (favStations.isNotEmpty) {
       groups.add((
         title: _kFavoritesTitle,
@@ -162,7 +163,7 @@ class _ListTabState extends State<ListTab> {
     final entries = <({String name, Object item})>[
       for (final s in stations) (name: s.name, item: s),
       for (final c in cameras) (name: c.title, item: c),
-    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    ]..sort((a, b) => compareSlovenian(a.name, b.name));
 
     String? letter;
     List<Object>? bucket;
@@ -196,16 +197,14 @@ class _ListTabState extends State<ListTab> {
                     child: PlatformInfo.isIOS
                         ? CupertinoSearchTextField(
                             placeholder: 'Išči kamero…',
-                            onChanged: (v) => setState(
-                              () => _query = v.toLowerCase().trim(),
-                            ),
+                            onChanged: (v) =>
+                                setState(() => _query = v.toLowerCase().trim()),
                           )
                         : AdaptiveTextField(
                             placeholder: 'Išči kamero…',
                             prefixIcon: const Icon(Icons.search),
-                            onChanged: (v) => setState(
-                              () => _query = v.toLowerCase().trim(),
-                            ),
+                            onChanged: (v) =>
+                                setState(() => _query = v.toLowerCase().trim()),
                           ),
                   ),
                   const SizedBox(width: 8),
@@ -576,7 +575,10 @@ class _StationRow extends StatelessWidget {
               Icon(Icons.videocam, size: 20, color: cs.onSurfaceVariant)
             else
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.temperatureColor(temp),
                   borderRadius: BorderRadius.circular(12),
@@ -679,7 +681,9 @@ class _FavoriteHeroCard extends StatelessWidget {
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
-                          shadows: [Shadow(blurRadius: 6, color: Colors.black87)],
+                          shadows: [
+                            Shadow(blurRadius: 6, color: Colors.black87),
+                          ],
                         ),
                       ),
                     ),
@@ -704,7 +708,11 @@ class _FavoriteHeroCard extends StatelessWidget {
                         ),
                       ),
                     ] else
-                      const Icon(Icons.videocam, color: Colors.white70, size: 20),
+                      const Icon(
+                        Icons.videocam,
+                        color: Colors.white70,
+                        size: 20,
+                      ),
                   ],
                 ),
               ),
@@ -747,7 +755,8 @@ class _CameraRow extends StatelessWidget {
                     imageUrl: url,
                     cacheKey: url,
                     fit: BoxFit.cover,
-                    placeholder: (_, _) => const ColoredBox(color: Colors.black),
+                    placeholder: (_, _) =>
+                        const ColoredBox(color: Colors.black),
                     errorWidget: (_, _, _) => const Icon(
                       Icons.videocam_off,
                       color: Colors.white38,
@@ -795,4 +804,22 @@ class _CameraRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Slovenian alphabetical order: Č after C, Š after S, Ž after Z (plain
+/// code-unit comparison puts them after Z).
+const _slAlphabet = 'abcčćdđefghijklmnopqrsštuvwxyzž';
+
+@visibleForTesting
+int compareSlovenian(String a, String b) {
+  final x = a.toLowerCase(), y = b.toLowerCase();
+  final n = x.length < y.length ? x.length : y.length;
+  for (var i = 0; i < n; i++) {
+    final cx = x[i], cy = y[i];
+    if (cx == cy) continue;
+    final ix = _slAlphabet.indexOf(cx), iy = _slAlphabet.indexOf(cy);
+    if (ix >= 0 && iy >= 0) return ix.compareTo(iy);
+    return cx.compareTo(cy);
+  }
+  return x.length.compareTo(y.length);
 }

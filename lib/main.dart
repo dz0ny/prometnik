@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -58,52 +59,112 @@ class _PrometAppState extends State<PrometApp> {
         ChangeNotifierProvider(create: (_) => TravelTimesProvider()..start()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()..load()),
         ChangeNotifierProvider(create: (_) => NavigationNotifier()),
-        // Location/watched-road alerts; fed the latest events via the proxy.
-        ChangeNotifierProxyProvider2<
-          EventsProvider,
-          TravelTimesProvider,
-          AlertsController
-        >(
-          create: (_) => AlertsController()..bootstrap(),
-          update: (_, events, travelTimes, alerts) =>
-              (alerts ?? AlertsController())
-                ..updateEvents(events.events)
-                ..updateTravelTimes(travelTimes.items),
+        // Location/watched-road alerts; listens to the data providers
+        // directly so polls finishing in the background still alert.
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (ctx) {
+            final alerts = AlertsController()
+              ..attach(
+                ctx.read<EventsProvider>(),
+                ctx.read<TravelTimesProvider>(),
+              );
+            unawaited(
+              alerts.bootstrap().catchError((Object e, StackTrace s) {
+                debugPrint('alerts bootstrap failed: $e\n$s');
+              }),
+            );
+            return alerts;
+          },
         ),
       ],
-      child: AdaptiveApp.router(
-        title: 'Prometnik',
-        themeMode: ThemeMode.system,
-        materialLightTheme: AppTheme.lightTheme,
-        materialDarkTheme: AppTheme.darkTheme,
-        cupertinoLightTheme: AppTheme.cupertinoLight,
-        cupertinoDarkTheme: AppTheme.cupertinoDark,
-        // CupertinoApp (used on iOS) provides neither a Material [Theme] nor
-        // [MaterialLocalizations]. Add the Material/Cupertino delegates and a
-        // root Material + Theme so body widgets that still rely on Material
-        // (RefreshIndicator, chips, modal sheets, Theme.of colours) keep
-        // working and pick up our palette on every platform.
-        localizationsDelegates: const [
-          DefaultMaterialLocalizations.delegate,
-          DefaultCupertinoLocalizations.delegate,
-          DefaultWidgetsLocalizations.delegate,
-        ],
-        builder: (context, child) {
-          final theme = AppTheme.materialFor(
-            MediaQuery.platformBrightnessOf(context),
-          );
-          return Theme(
-            data: theme,
-            child: Material(
-              type: MaterialType.transparency,
-              child: child ?? const SizedBox.shrink(),
-            ),
-          );
-        },
-        routerConfig: _routerHolder.router,
+      child: _PollingLifecycle(
+        child: AdaptiveApp.router(
+          title: 'Prometnik',
+          themeMode: ThemeMode.system,
+          materialLightTheme: AppTheme.lightTheme,
+          materialDarkTheme: AppTheme.darkTheme,
+          cupertinoLightTheme: AppTheme.cupertinoLight,
+          cupertinoDarkTheme: AppTheme.cupertinoDark,
+          // CupertinoApp (used on iOS) provides neither a Material [Theme] nor
+          // [MaterialLocalizations]. Add the Material/Cupertino delegates and a
+          // root Material + Theme so body widgets that still rely on Material
+          // (RefreshIndicator, chips, modal sheets, Theme.of colours) keep
+          // working and pick up our palette on every platform.
+          localizationsDelegates: const [
+            DefaultMaterialLocalizations.delegate,
+            DefaultCupertinoLocalizations.delegate,
+            DefaultWidgetsLocalizations.delegate,
+          ],
+          builder: (context, child) {
+            final theme = AppTheme.materialFor(
+              MediaQuery.platformBrightnessOf(context),
+            );
+            return Theme(
+              data: theme,
+              child: Material(
+                type: MaterialType.transparency,
+                child: child ?? const SizedBox.shrink(),
+              ),
+            );
+          },
+          routerConfig: _routerHolder.router,
+        ),
       ),
     );
   }
+}
+
+/// Pauses data polling while the app is in the background (saves data and
+/// battery). Events and travel times keep polling only when the user watches
+/// something, so watched-road / route alerts can still fire.
+class _PollingLifecycle extends StatefulWidget {
+  final Widget child;
+  const _PollingLifecycle({required this.child});
+
+  @override
+  State<_PollingLifecycle> createState() => _PollingLifecycleState();
+}
+
+class _PollingLifecycleState extends State<_PollingLifecycle> {
+  late final AppLifecycleListener _listener;
+
+  @override
+  void initState() {
+    super.initState();
+    _listener = AppLifecycleListener(onPause: _pause, onResume: _resume);
+  }
+
+  void _pause() {
+    context.read<WeatherProvider>().stop();
+    context.read<CamerasProvider>().stop();
+    context.read<RestAreasProvider>().stop();
+    context.read<BurjaProvider>().stop();
+    final alerts = context.read<AlertsController>();
+    if (!alerts.hasWatched) context.read<EventsProvider>().stop();
+    if (alerts.watchedTravelTimes.isEmpty) {
+      context.read<TravelTimesProvider>().stop();
+    }
+  }
+
+  void _resume() {
+    // start() refreshes immediately and re-arms the timer (no-op if running).
+    context.read<WeatherProvider>().start();
+    context.read<CamerasProvider>().start();
+    context.read<RestAreasProvider>().start();
+    context.read<BurjaProvider>().start();
+    context.read<EventsProvider>().start();
+    context.read<TravelTimesProvider>().start();
+  }
+
+  @override
+  void dispose() {
+    _listener.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Holds the GoRouter so it survives rebuilds and is disposed cleanly.

@@ -8,7 +8,7 @@ class RestAreasProvider extends ChangeNotifier {
   final RestAreasService _service;
 
   RestAreasProvider({RestAreasService? service})
-      : _service = service ?? RestAreasService();
+    : _service = service ?? RestAreasService();
 
   static const Duration _refreshInterval = Duration(minutes: 5);
   static const Duration _staleAfter = Duration(minutes: 3);
@@ -27,6 +27,12 @@ class RestAreasProvider extends ChangeNotifier {
   void start() {
     refresh();
     _timer ??= Timer.periodic(_refreshInterval, (_) => refresh());
+  }
+
+  /// Stop polling (app backgrounded). [start] resumes and refreshes.
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   Future<void> refreshIfStale([Duration maxAge = _staleAfter]) {

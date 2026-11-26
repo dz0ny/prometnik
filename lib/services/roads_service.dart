@@ -30,7 +30,12 @@ class RoadsService {
   Float64List? _west, _south, _east, _north;
   Future<void>? _loading;
 
-  Future<void> _ensureLoaded() => _loading ??= _load();
+  // Drop a failed load so the next call retries instead of failing forever.
+  Future<void> _ensureLoaded() =>
+      _loading ??= _load().catchError((Object e, StackTrace s) {
+        _loading = null;
+        Error.throwWithStackTrace(e, s);
+      });
 
   Future<void> _load() async {
     final raw = await rootBundle.loadString('assets/roads.json');
@@ -73,19 +78,16 @@ class RoadsService {
       refs.add(l[0] as String);
       names.add(l[1] as String);
       coords.add(
-        Float64List.fromList([for (final v in l[2] as List) (v as num).toDouble()]),
+        Float64List.fromList([
+          for (final v in l[2] as List) (v as num).toDouble(),
+        ]),
       );
     }
     return (refs, names, coords);
   }
 
   /// Roads whose bounding box intersects [w,s,e,n] (lon/lat degrees).
-  Future<List<RoadLine>> roadsIn(
-    double w,
-    double s,
-    double e,
-    double n,
-  ) async {
+  Future<List<RoadLine>> roadsIn(double w, double s, double e, double n) async {
     await _ensureLoaded();
     final coords = _coords!;
     final out = <RoadLine>[];
@@ -124,14 +126,7 @@ class RoadsService {
       }
       final f = coords[i];
       for (var j = 0; j + 3 < f.length; j += 2) {
-        final d = _segDistMeters(
-          lat,
-          lon,
-          f[j + 1],
-          f[j],
-          f[j + 3],
-          f[j + 2],
-        );
+        final d = _segDistMeters(lat, lon, f[j + 1], f[j], f[j + 3], f[j + 2]);
         if (d < best) {
           best = d;
           bestRef = _refs![i];

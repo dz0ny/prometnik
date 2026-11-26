@@ -56,12 +56,15 @@ class _NearbyTabState extends State<NearbyTab> {
       _active
         ..clear()
         ..addAll(
-          Prefs.getStringList('nearby.severities', const [])
-              .map(_severityByName)
-              .whereType<EventSeverity>(),
+          Prefs.getStringList(
+            'nearby.severities',
+            const [],
+          ).map(_severityByName).whereType<EventSeverity>(),
         );
     }
-    _excludedCauses.addAll(Prefs.getStringList('nearby.excludedCauses', const []));
+    _excludedCauses.addAll(
+      Prefs.getStringList('nearby.excludedCauses', const []),
+    );
     _distanceLimitIndex = Prefs.getInt(
       'nearby.distanceLimitIndex',
       _distanceLimitsKm.length - 1,
@@ -105,7 +108,8 @@ class _NearbyTabState extends State<NearbyTab> {
 
   int get _activeFilterCount {
     var n = 0;
-    if (_active.length != _order.length) n += _active.length;
+    // Count the hidden severities (as on the map), not the visible ones.
+    n += _order.length - _active.length;
     n += _excludedCauses.length;
     if (_distanceLimitMeters != null) n += 1;
     return n;
@@ -248,9 +252,9 @@ class _NearbyTabState extends State<NearbyTab> {
   }
 
   void _openPicker() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const WatchedRoadsPickerScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const WatchedRoadsPickerScreen()));
   }
 
   @override
@@ -278,13 +282,17 @@ class _NearbyTabState extends State<NearbyTab> {
                 builder: (context, alerts, _) {
                   final cs = Theme.of(context).colorScheme;
                   final distanceLimitMeters = _distanceLimitMeters;
+                  // Without a fix every distance is unknown; filtering by it
+                  // would hide everything, so only filter once we have one.
+                  final hasFix = alerts.position != null;
                   final distanceFilterActive =
-                      alerts.locationEnabled && distanceLimitMeters != null;
+                      hasFix && distanceLimitMeters != null;
                   final distanceEvents = alerts.nearbyEvents
                       .where((n) => _passes(n.event))
                       .toList();
                   final distanceById = {
-                    for (final n in distanceEvents) n.event.id: n.distanceMeters,
+                    for (final n in distanceEvents)
+                      n.event.id: n.distanceMeters,
                   };
                   final nearby = distanceEvents
                       .where(
@@ -293,23 +301,24 @@ class _NearbyTabState extends State<NearbyTab> {
                             n.distanceMeters <= distanceLimitMeters,
                       )
                       .toList();
-                  final watched = alerts.watchedEvents
-                      .where(_passes)
-                      .where(
-                        (e) =>
-                            !distanceFilterActive ||
-                            (distanceById[e.id] ?? double.infinity) <=
-                                distanceLimitMeters,
-                      )
-                      .toList()
-                    ..sort((a, b) {
-                      final da = distanceById[a.id];
-                      final db = distanceById[b.id];
-                      if (da == null && db == null) return 0;
-                      if (da == null) return 1;
-                      if (db == null) return -1;
-                      return da.compareTo(db);
-                    });
+                  final watched =
+                      alerts.watchedEvents
+                          .where(_passes)
+                          .where(
+                            (e) =>
+                                !distanceFilterActive ||
+                                (distanceById[e.id] ?? double.infinity) <=
+                                    distanceLimitMeters,
+                          )
+                          .toList()
+                        ..sort((a, b) {
+                          final da = distanceById[a.id];
+                          final db = distanceById[b.id];
+                          if (da == null && db == null) return 0;
+                          if (da == null) return 1;
+                          if (db == null) return -1;
+                          return da.compareTo(db);
+                        });
                   final allEvents = alerts.events.where(_passes).toList();
 
                   return ListView(
@@ -398,7 +407,9 @@ class _NearbyTabState extends State<NearbyTab> {
                       // Non-blocking prompt to enable distance + alerts.
                       if (!alerts.locationEnabled)
                         _locationPrompt(context, alerts),
-                      if (alerts.locationEnabled)
+                      if (alerts.locationEnabled && !hasFix)
+                        _hint(cs, 'Pridobivanje lokacije…')
+                      else if (alerts.locationEnabled)
                         if (nearby.isEmpty)
                           _hint(
                             cs,
@@ -430,7 +441,12 @@ class _NearbyTabState extends State<NearbyTab> {
                       else
                         _eventCard(
                           context,
-                          allEvents.map((e) => _eventRow(context, e)).toList(),
+                          // Each row holds a live mini-map; cap it like the
+                          // nearby list so 150+ events don't build 150 maps.
+                          allEvents
+                              .take(50)
+                              .map((e) => _eventRow(context, e))
+                              .toList(),
                         ),
                     ],
                   );
@@ -538,6 +554,9 @@ class _NearbyTabState extends State<NearbyTab> {
             ),
             const SizedBox(height: 10),
             EventMiniMap(
+              // Rows are reused by position when the list re-sorts; the map
+              // only reads its event in initState, so key it by event.
+              key: ValueKey(e.id),
               event: e,
               height: 110,
               borderRadius: 12,

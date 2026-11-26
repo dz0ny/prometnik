@@ -81,6 +81,7 @@ class WeatherStation {
 
   /// Cache-busting camera URL so each refresh fetches a fresh frame.
   String cameraUrlWithBuster(int epochMillis) {
+    if (cameraLink.isEmpty) return cameraLink;
     final sep = cameraLink.contains('?') ? '&' : '?';
     return '$cameraLink${sep}t=$epochMillis';
   }
@@ -97,7 +98,9 @@ class WeatherStation {
     }
 
     final lat = normalize(json['coordinateX'] as num, max: 90);
-    final lng = normalize(json['coordinateY'] as num, max: 180);
+    // Slovenian longitudes are ~13.3–16.6, so the 180 bound would stop one
+    // decimal place too early (e.g. 154892240 → 154.9 instead of 15.49).
+    final lng = normalize(json['coordinateY'] as num, max: 20);
 
     return WeatherStation(
       stationId: (json['stationId'] as num).toInt(),

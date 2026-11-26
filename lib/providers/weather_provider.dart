@@ -9,7 +9,7 @@ class WeatherProvider extends ChangeNotifier {
   final WeatherService _service;
 
   WeatherProvider({WeatherService? service})
-      : _service = service ?? WeatherService();
+    : _service = service ?? WeatherService();
 
   static const Duration _refreshInterval = Duration(minutes: 10);
 
@@ -42,6 +42,12 @@ class WeatherProvider extends ChangeNotifier {
   void start() {
     refresh();
     _timer ??= Timer.periodic(_refreshInterval, (_) => refresh());
+  }
+
+  /// Stop polling (app backgrounded). [start] resumes and refreshes.
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   /// Refresh only if the data is missing or older than [maxAge] (default 5 min).

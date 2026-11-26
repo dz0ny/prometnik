@@ -11,7 +11,7 @@ class CamerasProvider extends ChangeNotifier {
   final CamerasService _service;
 
   CamerasProvider({CamerasService? service})
-      : _service = service ?? CamerasService();
+    : _service = service ?? CamerasService();
 
   static const Duration _refreshInterval = Duration(minutes: 15);
   static const Duration _staleAfter = Duration(minutes: 10);
@@ -28,7 +28,9 @@ class CamerasProvider extends ChangeNotifier {
   bool get hasData => _cameras.isNotEmpty;
 
   List<TrafficCamera> visibleCameras(List<WeatherStation> stations) {
-    return _cameras.where((camera) => !_duplicatesStation(camera, stations)).toList();
+    return _cameras
+        .where((camera) => !_duplicatesStation(camera, stations))
+        .toList();
   }
 
   bool _duplicatesStation(TrafficCamera camera, List<WeatherStation> stations) {
@@ -44,6 +46,12 @@ class CamerasProvider extends ChangeNotifier {
   void start() {
     refresh();
     _timer ??= Timer.periodic(_refreshInterval, (_) => refresh());
+  }
+
+  /// Stop polling (app backgrounded). [start] resumes and refreshes.
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   Future<void> refreshIfStale([Duration maxAge = _staleAfter]) {

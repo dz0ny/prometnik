@@ -1,5 +1,6 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
@@ -25,8 +26,22 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _open(String url) async {
-    final uri = Uri.parse(url);
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    bool opened;
+    try {
+      opened = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } on PlatformException {
+      opened = false;
+    }
+    if (!opened && mounted) {
+      AdaptiveSnackBar.show(
+        context,
+        message: 'Povezave ni mogoče odpreti',
+        type: AdaptiveSnackBarType.error,
+      );
+    }
   }
 
   @override

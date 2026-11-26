@@ -9,7 +9,7 @@ class TravelTimesProvider extends ChangeNotifier {
   final TravelTimesService _service;
 
   TravelTimesProvider({TravelTimesService? service})
-      : _service = service ?? TravelTimesService();
+    : _service = service ?? TravelTimesService();
 
   static const Duration _refreshInterval = Duration(minutes: 2);
   static const Duration _staleAfter = Duration(minutes: 1);
@@ -29,6 +29,12 @@ class TravelTimesProvider extends ChangeNotifier {
   void start() {
     refresh();
     _timer ??= Timer.periodic(_refreshInterval, (_) => refresh());
+  }
+
+  /// Stop polling (app backgrounded). [start] resumes and refreshes.
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   Future<void> refreshIfStale([Duration maxAge = _staleAfter]) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/burja_station.dart';
+import '../theme/app_theme.dart';
 
 const _burjaColors = <Color>[
   Color(0xFF66BB6A), // 0 calm
@@ -104,7 +105,10 @@ class _BurjaSheet extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
-                      color: color,
+                      color: AppTheme.readableText(
+                        color,
+                        Theme.of(context).brightness,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),

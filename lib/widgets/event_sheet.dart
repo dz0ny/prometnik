@@ -1,6 +1,7 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -10,13 +11,15 @@ import '../models/traffic_event.dart';
 import '../providers/cameras_provider.dart';
 import '../providers/weather_provider.dart';
 import '../router/navigation_notifier.dart';
-import '../services/map_tile_cache_service.dart';
 import '../services/road_preview_simplifier.dart';
 import '../services/roads_service.dart';
+import 'base_tile_layer.dart';
 import 'camera_sheet.dart';
 import 'event_marker.dart';
 import 'event_visuals.dart';
 import 'weather_details.dart' show WeatherFormat;
+import 'sheet_snack.dart';
+import '../theme/app_theme.dart';
 
 /// Present [event] details in a modal bottom sheet. Shared by the map markers
 /// and the events list.
@@ -36,14 +39,24 @@ class EventSheet extends StatelessWidget {
   const EventSheet({super.key, required this.event});
 
   Future<void> _openInfo(BuildContext context) async {
-    final uri = Uri.tryParse(event.infoUrl);
+    final raw = event.infoUrl.trim();
+    if (raw.isEmpty) return;
+    // The feed sometimes omits the scheme ("www.dars.si/..."), which
+    // launchUrl can't open.
+    final uri = Uri.tryParse(raw.contains('://') ? raw : 'https://$raw');
     if (uri == null) return;
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    bool opened;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on PlatformException {
+      opened = false;
+    }
+    if (!opened) {
       if (context.mounted) {
-        AdaptiveSnackBar.show(
+        showSheetSnack(
           context,
           message: 'Povezave ni mogoče odpreti',
-          type: AdaptiveSnackBarType.error,
+          error: true,
         );
       }
     }
@@ -190,7 +203,10 @@ class _Hero extends StatelessWidget {
                               ? EventVisuals.label(event.severity)
                               : event.cause,
                           style: TextStyle(
-                            color: color,
+                            color: AppTheme.readableText(
+                              color,
+                              Theme.of(context).brightness,
+                            ),
                             fontWeight: FontWeight.w800,
                             fontSize: 13,
                           ),
@@ -204,10 +220,7 @@ class _Hero extends StatelessWidget {
                             ),
                           ),
                         if (event.isRoadClosed)
-                          _Pill(
-                            text: 'Zaprto',
-                            color: const Color(0xFFE53935),
-                          ),
+                          _Pill(text: 'Zaprto', color: const Color(0xFFE53935)),
                       ],
                     ),
                     const SizedBox(height: 3),
@@ -288,13 +301,18 @@ class _MiniMapState extends State<EventMiniMap> {
     if (e.hasArea) {
       final sw = e.areaSouthWest!, ne = e.areaNorthEast!;
       RoadPreviewSimplifier.roadsIn(
-        sw.longitude,
-        sw.latitude,
-        ne.longitude,
-        ne.latitude,
-      ).then((roads) {
-        if (mounted) setState(() => _roads = roads);
-      });
+            sw.longitude,
+            sw.latitude,
+            ne.longitude,
+            ne.latitude,
+          )
+          .then((roads) {
+            if (mounted) setState(() => _roads = roads);
+          })
+          .catchError((Object e, StackTrace s) {
+            // The mini-map still works without highlighted roads.
+            debugPrint('road preview failed: $e\n$s');
+          });
     }
   }
 
@@ -371,15 +389,10 @@ class _MiniMapState extends State<EventMiniMap> {
                   ),
                 ),
                 children: [
-                  TileLayer(
-                    urlTemplate: isDark
-                        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    tileProvider: MapTileCacheService.instance.createTileProvider(),
-                    subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
-                    retinaMode: isDark && RetinaMode.isHighDensity(context),
-                    userAgentPackageName: 'dev.dz0ny.promet',
-                    maxZoom: 19,
+                  buildBaseTileLayer(
+                    context,
+                    base: BaseMap.saved,
+                    isDark: isDark,
                   ),
                   // Roads within the affected area. The road matching the
                   // event's number is emphasised; others provide faint context.
@@ -449,12 +462,13 @@ class _EventNearbyCamerasSectionState extends State<EventNearbyCamerasSection> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final stations = context.watch<WeatherProvider>().stations;
-    final cameras = context
-        .watch<CamerasProvider>()
-        .visibleCameras(stations)
-        .where(_isNearby)
-        .toList()
-      ..sort(_compareByDistance);
+    final cameras =
+        context
+            .watch<CamerasProvider>()
+            .visibleCameras(stations)
+            .where(_isNearby)
+            .toList()
+          ..sort(_compareByDistance);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -512,9 +526,10 @@ class _EventNearbyCamerasSectionState extends State<EventNearbyCamerasSection> {
 
   int _compareByDistance(TrafficCamera a, TrafficCamera b) {
     const distance = Distance();
-    return distance(widget.event.position, a.position).compareTo(
-      distance(widget.event.position, b.position),
-    );
+    return distance(
+      widget.event.position,
+      a.position,
+    ).compareTo(distance(widget.event.position, b.position));
   }
 }
 
@@ -543,6 +558,7 @@ class EventCameraCard extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: url,
                   cacheKey: url,
+                  useOldImageOnUrlChange: true,
                   fit: BoxFit.cover,
                   placeholder: (_, _) => const Center(
                     child: SizedBox(

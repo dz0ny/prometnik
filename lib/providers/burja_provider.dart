@@ -28,6 +28,12 @@ class BurjaProvider extends ChangeNotifier {
     _timer ??= Timer.periodic(_refreshInterval, (_) => refresh());
   }
 
+  /// Stop polling (app backgrounded). [start] resumes and refreshes.
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
   Future<void> refreshIfStale([Duration maxAge = _staleAfter]) {
     final u = _lastUpdated;
     if (u == null || DateTime.now().difference(u) > maxAge) return refresh();

@@ -15,7 +15,9 @@ final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellNavigatorMapKey = GlobalKey<NavigatorState>(debugLabel: 'map');
 final _shellNavigatorListKey = GlobalKey<NavigatorState>(debugLabel: 'list');
 final _shellNavigatorTimesKey = GlobalKey<NavigatorState>(debugLabel: 'times');
-final _shellNavigatorNearbyKey = GlobalKey<NavigatorState>(debugLabel: 'nearby');
+final _shellNavigatorNearbyKey = GlobalKey<NavigatorState>(
+  debugLabel: 'nearby',
+);
 
 /// Global key to access MapTabState for operations like focusing a station.
 final mapTabKey = GlobalKey<MapTabState>();
@@ -69,10 +71,15 @@ GoRouter createRouter({bool showOnboarding = false}) {
                 routes: [
                   GoRoute(
                     path: 'station/:id',
-                    builder: (context, state) {
-                      final id = int.parse(state.pathParameters['id']!);
-                      return StationDetailScreen(stationId: id);
-                    },
+                    // A malformed id (e.g. a hand-edited web URL) must not
+                    // throw inside the page builder.
+                    redirect: (context, state) =>
+                        int.tryParse(state.pathParameters['id'] ?? '') == null
+                        ? AppRoutes.list
+                        : null,
+                    builder: (context, state) => StationDetailScreen(
+                      stationId: int.parse(state.pathParameters['id']!),
+                    ),
                   ),
                 ],
               ),

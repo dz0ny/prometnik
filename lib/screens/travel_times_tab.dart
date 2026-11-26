@@ -8,13 +8,13 @@ import '../models/travel_time.dart';
 import '../providers/alerts_controller.dart';
 import '../providers/events_provider.dart';
 import '../providers/travel_times_provider.dart';
-import '../services/map_tile_cache_service.dart';
 import '../services/road_preview_simplifier.dart';
 import '../services/roads_service.dart';
 import '../widgets/event_marker.dart';
 import '../widgets/event_sheet.dart';
 import '../widgets/event_visuals.dart';
 import '../theme/app_theme.dart';
+import '../widgets/base_tile_layer.dart';
 
 /// Lists travel times ("potovalni časi") for the main routes, with the current
 /// duration and any delay, from the promet.si data channel.
@@ -66,7 +66,11 @@ class TravelTimesTab extends StatelessWidget {
                     ),
                     children: [
                       for (var i = 0; i < provider.items.length; i++) ...[
-                        _TravelRow(item: provider.items[i]),
+                        // Keyed: the route map reads its item only once.
+                        _TravelRow(
+                          key: ValueKey(provider.items[i].id),
+                          item: provider.items[i],
+                        ),
                         if (!PlatformInfo.isIOS &&
                             i < provider.items.length - 1)
                           Divider(
@@ -141,7 +145,7 @@ class TravelTimesTab extends StatelessWidget {
 class _TravelRow extends StatelessWidget {
   final TravelTime item;
 
-  const _TravelRow({required this.item});
+  const _TravelRow({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {
@@ -166,13 +170,19 @@ class _TravelRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   item.route,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               if (item.isClosed)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: color,
                     borderRadius: BorderRadius.circular(12),
@@ -209,13 +219,18 @@ class _TravelRow extends StatelessWidget {
                     else
                       Text(
                         'tekoče',
-                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                   ],
                 ),
               const SizedBox(width: 4),
               AdaptiveButton.icon(
-                icon: watched ? Icons.notifications_active : Icons.notifications_none,
+                icon: watched
+                    ? Icons.notifications_active
+                    : Icons.notifications_none,
                 iconColor: watched ? cs.primary : cs.onSurfaceVariant,
                 style: AdaptiveButtonStyle.plain,
                 onPressed: () => alerts.toggleTravelTime(item.id),
@@ -223,7 +238,12 @@ class _TravelRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          _TravelRouteMap(item: item, color: color, events: events),
+          _TravelRouteMap(
+            key: ValueKey(item.id),
+            item: item,
+            color: color,
+            events: events,
+          ),
         ],
       ),
     );
@@ -243,6 +263,7 @@ class _TravelRouteMap extends StatefulWidget {
   final List<TrafficEvent> events;
 
   const _TravelRouteMap({
+    super.key,
     required this.item,
     required this.color,
     required this.events,
@@ -267,9 +288,13 @@ class _TravelRouteMapState extends State<_TravelRouteMap>
     super.initState();
     final key = widget.item.route.toLowerCase();
     _spec = _specCache.putIfAbsent(key, () => _routeSpec(widget.item.route));
-    _loadRoads().then((roads) {
-      if (mounted) setState(() => _roads = roads);
-    });
+    _loadRoads()
+        .then((roads) {
+          if (mounted) setState(() => _roads = roads);
+        })
+        .catchError((Object e, StackTrace s) {
+          debugPrint('route roads failed: $e\n$s');
+        });
   }
 
   Future<List<RoadLine>> _loadRoads() {
@@ -331,10 +356,7 @@ class _TravelRouteMapState extends State<_TravelRouteMap>
     }
     return _TravelRouteSpec(
       const {'A1', 'A2', 'H3', 'H4', 'H5', 'H6'},
-      LatLngBounds(
-        const LatLng(45.400, 13.350),
-        const LatLng(46.900, 16.650),
-      ),
+      LatLngBounds(const LatLng(45.400, 13.350), const LatLng(46.900, 16.650)),
     );
   }
 
@@ -369,15 +391,10 @@ class _TravelRouteMapState extends State<_TravelRouteMap>
                   ),
                 ),
                 children: [
-                  TileLayer(
-                    urlTemplate: isDark
-                        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    tileProvider: MapTileCacheService.instance.createTileProvider(),
-                    subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
-                    retinaMode: isDark && RetinaMode.isHighDensity(context),
-                    userAgentPackageName: 'dev.dz0ny.promet',
-                    maxZoom: 19,
+                  buildBaseTileLayer(
+                    context,
+                    base: BaseMap.saved,
+                    isDark: isDark,
                   ),
                   if (_roads.isNotEmpty)
                     PolylineLayer(
@@ -414,7 +431,10 @@ class _TravelRouteMapState extends State<_TravelRouteMap>
                 right: 8,
                 bottom: 8,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: cs.surface.withValues(alpha: 0.92),
                     borderRadius: BorderRadius.circular(999),
@@ -428,7 +448,9 @@ class _TravelRouteMapState extends State<_TravelRouteMap>
                       Icon(
                         Icons.warning_amber_rounded,
                         size: 14,
-                        color: events.isEmpty ? cs.onSurfaceVariant : widget.color,
+                        color: events.isEmpty
+                            ? cs.onSurfaceVariant
+                            : widget.color,
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -454,7 +476,9 @@ class _TravelRouteMapState extends State<_TravelRouteMap>
     final routeEvents = [
       for (final event in events)
         if (event.isActive() &&
-            _spec.refs.any((ref) => roadRefMatches(ref, event.roadDesignation)) &&
+            _spec.refs.any(
+              (ref) => roadRefMatches(ref, event.roadDesignation),
+            ) &&
             _contains(_spec.bounds, event.position))
           event,
     ]..sort(_compareEvents);

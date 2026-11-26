@@ -9,7 +9,7 @@ class EventsProvider extends ChangeNotifier {
   final EventsService _service;
 
   EventsProvider({EventsService? service})
-      : _service = service ?? EventsService();
+    : _service = service ?? EventsService();
 
   static const Duration _refreshInterval = Duration(minutes: 2);
   static const Duration _staleAfter = Duration(minutes: 1);
@@ -36,6 +36,12 @@ class EventsProvider extends ChangeNotifier {
   void start() {
     refresh();
     _timer ??= Timer.periodic(_refreshInterval, (_) => refresh());
+  }
+
+  /// Stop polling (app backgrounded). [start] resumes and refreshes.
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   Future<void> refreshIfStale([Duration maxAge = _staleAfter]) {

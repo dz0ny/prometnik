@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// Thin wrapper around geolocator for permission + position access.
@@ -22,9 +23,24 @@ class LocationService {
     return p == LocationPermission.whileInUse || p == LocationPermission.always;
   }
 
+  /// Current fix, or the last known one if no fix arrives in time (indoors,
+  /// tunnels) or location services were switched off meanwhile.
   Future<Position?> current() async {
     if (!await ensurePermission()) return null;
-    return Geolocator.getCurrentPosition();
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+    } on Exception catch (e) {
+      debugPrint('getCurrentPosition failed: $e');
+      try {
+        return await Geolocator.getLastKnownPosition();
+      } on Exception {
+        return null;
+      }
+    }
   }
 
   /// Position updates while the app is in use (every ~200 m of movement).
