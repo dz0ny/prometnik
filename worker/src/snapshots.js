@@ -14,7 +14,7 @@ import { cameraUrl } from './index.js';
 // which keeps a run well under the Workers per-invocation subrequest limit.
 export const SLICES = 60;
 const HISTORY_HOURS = 24;
-const CONCURRENCY = 4;
+const PAUSE_MS = 700;
 // The camera hosts are slow and stall in bursts; the cron can afford to wait
 // much longer than a viewer's request.
 const CRON_FETCH_TIMEOUT_MS = 25000;
@@ -309,34 +309,42 @@ async function captureSliceInner(env, now, fetchFrame) {
     }
   }
 
+  // One camera at a time with a pause between: the camera host refuses
+  // connections (522) when it sees bursts. Three failures in a row mean it is
+  // throttling us, so the run backs off and leaves the rest for the retry.
   let stored = 0;
   let failed = 0;
+  let skipped = 0;
+  let streak = 0;
   const errors = [];
-  const queue = [...mine];
-  const worker = async () => {
-    for (let job = queue.shift(); job; job = queue.shift()) {
-      try {
-        if (await env.SNAPS.head(job.key)) continue; // already have this hour
-        const res = await fetchFrame(new URL(job.cam), CRON_FETCH_TIMEOUT_MS);
-        const wrote = await storeHourly(
-          env,
-          job.cam,
-          await res.arrayBuffer(),
-          res.headers.get('Content-Type'),
-          now,
-        );
-        if (wrote) stored++;
-      } catch (err) {
-        failed++;
-        if (errors.length < 3) errors.push(`${job.cam.split('/').pop()}: ${err.message}`);
-      }
+  for (const job of mine) {
+    if (streak >= 3) {
+      skipped++;
+      continue;
     }
-  };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    try {
+      if (await env.SNAPS.head(job.key)) continue; // already have this hour
+      const res = await fetchFrame(new URL(job.cam), CRON_FETCH_TIMEOUT_MS);
+      const wrote = await storeHourly(
+        env,
+        job.cam,
+        await res.arrayBuffer(),
+        res.headers.get('Content-Type'),
+        now,
+      );
+      if (wrote) stored++;
+      streak = 0;
+    } catch (err) {
+      failed++;
+      streak++;
+      if (errors.length < 3) errors.push(`${job.cam.split('/').pop()}: ${err.message}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, PAUSE_MS));
+  }
   console.log(
     `slice ${slice} @${stamp}: ${mine.length} cameras, ${stored} stored, ${failed} failed (of ${cameras.length} total)`,
   );
-  return { slice, stamp, cameras: mine.length, stored, failed, total: cameras.length, weather, errors };
+  return { slice, stamp, cameras: mine.length, stored, failed, total: cameras.length, weather, skipped, errors };
 }
 
 /** GET /history?u=… */
