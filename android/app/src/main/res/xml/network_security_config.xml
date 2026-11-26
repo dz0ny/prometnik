@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cleartext only for DRSI's CVIS road weather site, which has no HTTPS. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">drsi.cgs-labs.si</domain>
+    </domain-config>
+</network-security-config>

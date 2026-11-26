@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/alerts_controller.dart';
 import 'providers/burja_provider.dart';
+import 'providers/drsi_provider.dart';
 import 'providers/cameras_provider.dart';
 import 'providers/events_provider.dart';
 import 'providers/favorites_provider.dart';
@@ -56,6 +57,7 @@ class _PrometAppState extends State<PrometApp> {
         ChangeNotifierProvider(create: (_) => CamerasProvider()..start()),
         ChangeNotifierProvider(create: (_) => RestAreasProvider()..start()),
         ChangeNotifierProvider(create: (_) => BurjaProvider()..start()),
+        ChangeNotifierProvider(create: (_) => DrsiProvider()..start()),
         ChangeNotifierProvider(create: (_) => TravelTimesProvider()..start()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()..load()),
         ChangeNotifierProvider(create: (_) => NavigationNotifier()),
@@ -140,6 +142,7 @@ class _PollingLifecycleState extends State<_PollingLifecycle> {
     context.read<CamerasProvider>().stop();
     context.read<RestAreasProvider>().stop();
     context.read<BurjaProvider>().stop();
+    context.read<DrsiProvider>().stop();
     final alerts = context.read<AlertsController>();
     if (!alerts.hasWatched) context.read<EventsProvider>().stop();
     if (alerts.watchedTravelTimes.isEmpty) {
@@ -153,6 +156,7 @@ class _PollingLifecycleState extends State<_PollingLifecycle> {
     context.read<CamerasProvider>().start();
     context.read<RestAreasProvider>().start();
     context.read<BurjaProvider>().start();
+    context.read<DrsiProvider>().start();
     context.read<EventsProvider>().start();
     context.read<TravelTimesProvider>().start();
   }

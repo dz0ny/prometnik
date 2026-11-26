@@ -8,6 +8,8 @@ import '../models/traffic_event.dart';
 import '../models/weather_station.dart';
 import '../providers/alerts_controller.dart';
 import '../providers/burja_provider.dart';
+import '../providers/drsi_provider.dart';
+import '../services/drsi_service.dart';
 import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
 import '../providers/rest_areas_provider.dart';
@@ -16,6 +18,7 @@ import '../services/prefs.dart';
 import '../services/roads_service.dart';
 import '../widgets/base_tile_layer.dart';
 import '../widgets/burja_sheet.dart';
+import '../widgets/drsi_sheet.dart';
 import '../widgets/camera_sheet.dart';
 import '../widgets/event_marker.dart';
 import '../widgets/event_sheet.dart';
@@ -69,6 +72,7 @@ class MapTabState extends State<MapTab> {
   bool _showDarsCameras = true;
   bool _showRestAreas = true;
   bool _showBurja = true;
+  bool _showDrsi = true;
   final Set<EventSeverity> _eventFilter = {..._severities};
 
   // Affected-area road highlights for the visible events.
@@ -92,6 +96,7 @@ class MapTabState extends State<MapTab> {
     _showDarsCameras = Prefs.getBool('map.darsCameras', true);
     _showRestAreas = Prefs.getBool('map.pocivalisca', true);
     _showBurja = Prefs.getBool('map.burja', true);
+    _showDrsi = Prefs.getBool('map.drsi', true);
     if (Prefs.has('map.severities')) {
       final saved = Prefs.getStringList('map.severities', const []);
       _eventFilter
@@ -106,6 +111,7 @@ class MapTabState extends State<MapTab> {
     Prefs.setBool('map.darsCameras', _showDarsCameras);
     Prefs.setBool('map.pocivalisca', _showRestAreas);
     Prefs.setBool('map.burja', _showBurja);
+    Prefs.setBool('map.drsi', _showDrsi);
     Prefs.setStringList(
       'map.severities',
       _eventFilter.map((s) => s.name).toList(),
@@ -380,6 +386,7 @@ class MapTabState extends State<MapTab> {
       (_showDarsCameras ? 0 : 1) +
       (_showRestAreas ? 0 : 1) +
       (_showBurja ? 0 : 1) +
+      (_showDrsi || !DrsiService.isSupported ? 0 : 1) +
       (_severities.length - _eventFilter.length);
 
   void _openMapFilters() {
@@ -439,6 +446,17 @@ class MapTabState extends State<MapTab> {
               _saveMapFilters();
             }),
           ),
+          // DRSI is plain HTTP without CORS: not reachable from the web build.
+          if (DrsiService.isSupported)
+            _switchRow(
+              Icons.ac_unit,
+              'Stanje cestišča (DRSI)',
+              _showDrsi,
+              (v) => setSheet(() {
+                setState(() => _showDrsi = v);
+                _saveMapFilters();
+              }),
+            ),
           const FilterSectionLabel('Dogodki'),
           for (final s in _severities)
             _switchRow(
@@ -648,6 +666,23 @@ class MapTabState extends State<MapTab> {
                           ),
                     ],
                   ),
+                  // DRSI road weather stations: road temperature + ice risk.
+                  // Above the weather pins, which often sit on the same spot.
+                  if (_showDrsi && DrsiService.isSupported)
+                    MarkerLayer(
+                      markers: [
+                        for (final st in context.watch<DrsiProvider>().items)
+                          Marker(
+                            point: st.position,
+                            width: 56,
+                            height: 26,
+                            child: DrsiMarker(
+                              station: st,
+                              onTap: () => showDrsiSheet(context, st),
+                            ),
+                          ),
+                      ],
+                    ),
                   // Traffic events render on top of the weather markers.
                   MarkerLayer(
                     markers: [
