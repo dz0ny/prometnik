@@ -70,6 +70,97 @@ export function camerasFromFeeds(bodies) {
   return [...urls];
 }
 
+// ── Weather history ──────────────────────────────────────────────────────
+// Once an hour the weather-station feed's readings are appended to one
+// rolling R2 object, so the app can chart the last 24 hours per station.
+
+const WEATHER_FEED = 'https://www.ceste.si/Vremenske/Vreme/KamereInVreme';
+const WEATHER_KEY = 'w/last24.json';
+const WEATHER_HOURS = 25;
+
+/** Compact readings per station: id → [tempC, humidity%, windKmh, gustKmh, rainMm]. */
+export function weatherPoints(feed) {
+  const out = {};
+  if (!Array.isArray(feed)) return out;
+  for (const s of feed) {
+    const w = s?.weather;
+    if (!w || s.stationId == null) continue;
+    out[s.stationId] = [
+      w.outdoorTemperatureC ?? null,
+      w.humidityPercentage ?? null,
+      w.windSpeedKmh ?? null,
+      w.windGustKmh ?? null,
+      w.dailyRainMm ?? null,
+    ];
+  }
+  return out;
+}
+
+/** Adds [stamp]'s readings to the rolling document, keeping the newest hours. */
+export function mergeWeatherHour(doc, stamp, stations) {
+  const hours = (doc?.hours ?? []).filter((h) => h.stamp !== stamp);
+  hours.push({ stamp, stations });
+  hours.sort((a, b) => a.stamp.localeCompare(b.stamp));
+  return { hours: hours.slice(-WEATHER_HOURS) };
+}
+
+/** One station's series from the rolling document, oldest first. */
+export function stationSeries(doc, id) {
+  const out = [];
+  for (const h of doc?.hours ?? []) {
+    const p = h.stations?.[id];
+    const at = stampToDate(h.stamp);
+    if (!p || !at) continue;
+    out.push({
+      at: at.toISOString().replace('.000Z', 'Z'),
+      t: p[0],
+      h: p[1],
+      w: p[2],
+      g: p[3],
+      r: p[4],
+    });
+  }
+  return out;
+}
+
+async function readWeatherDoc(env) {
+  const obj = await env.SNAPS.get(WEATHER_KEY);
+  if (!obj) return { hours: [] };
+  try {
+    return await obj.json();
+  } catch {
+    return { hours: [] };
+  }
+}
+
+/** Stores this hour's weather readings once. Returns true when it wrote. */
+export async function captureWeather(env, now) {
+  const stamp = hourStamp(now);
+  const doc = await readWeatherDoc(env);
+  if (doc.hours.some((h) => h.stamp === stamp)) return false;
+  const res = await fetch(WEATHER_FEED, {
+    headers: { 'User-Agent': 'prometnik-cams/1.0' },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`weather feed answered ${res.status}`);
+  const stations = weatherPoints(await res.json());
+  if (Object.keys(stations).length === 0) return false;
+  await env.SNAPS.put(
+    WEATHER_KEY,
+    JSON.stringify(mergeWeatherHour(doc, stamp, stations)),
+    { httpMetadata: { contentType: 'application/json' } },
+  );
+  return true;
+}
+
+/** GET /weather?id=<stationId> → {"station", "points": [{at,t,h,w,g,r}]} */
+export async function handleWeather(url, env) {
+  const id = url.searchParams.get('id') || '';
+  if (!/^\d{1,9}$/.test(id)) return json({ error: 'Bad station id' }, 400);
+  const doc = await readWeatherDoc(env);
+  return json({ station: Number(id), points: stationSeries(doc, id) }, 200, 600);
+}
+
 /** GET /status — whether the camera feeds are reachable from the worker. */
 export async function handleStatus(env) {
   const feeds = await Promise.all(
@@ -166,6 +257,15 @@ async function recordRun(env, run) {
 }
 
 async function captureSliceInner(env, now, fetchFrame) {
+  // Hourly weather readings ride along; a failure here must not stop the
+  // camera snapshots.
+  let weather = false;
+  try {
+    weather = await captureWeather(env, now);
+  } catch (err) {
+    console.warn(`weather history: ${err.message}`);
+  }
+
   const slice = now.getUTCMinutes() % SLICES;
   const stamp = hourStamp(now);
   const cameras = await listCameras();
@@ -201,7 +301,7 @@ async function captureSliceInner(env, now, fetchFrame) {
   console.log(
     `slice ${slice} @${stamp}: ${mine.length} cameras, ${stored} stored, ${failed} failed (of ${cameras.length} total)`,
   );
-  return { slice, stamp, cameras: mine.length, stored, failed, total: cameras.length };
+  return { slice, stamp, cameras: mine.length, stored, failed, total: cameras.length, weather };
 }
 
 /** GET /history?u=… */

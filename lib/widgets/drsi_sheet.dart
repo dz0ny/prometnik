@@ -29,6 +29,8 @@ const _riskAdvice = <RoadRisk, String>{
 };
 
 Color drsiRiskColor(RoadRisk r) => _riskColors[r]!;
+String drsiRiskLabel(RoadRisk r) => _riskLabels[r]!;
+String drsiRiskAdvice(RoadRisk r) => _riskAdvice[r]!;
 
 /// Rounded whole degrees without a "-0" for small negatives.
 String _wholeDegrees(double t) {

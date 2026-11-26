@@ -18,6 +18,7 @@ import {
   handleHistory,
   handleSnap,
   handleStatus,
+  handleWeather,
   latestSnapshot,
   storeHourly,
 } from './snapshots.js';
@@ -108,6 +109,7 @@ export default {
     if (url.pathname === '/history') return handleHistory(url, env);
     if (url.pathname === '/snap') return handleSnap(url, env);
     if (url.pathname === '/status') return handleStatus(env);
+    if (url.pathname === '/weather') return handleWeather(url, env);
     if (url.pathname !== '/cam') {
       return new Response('Not found', { status: 404 });
     }

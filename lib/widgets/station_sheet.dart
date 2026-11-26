@@ -5,10 +5,10 @@ import '../models/weather_station.dart';
 import '../providers/weather_provider.dart';
 import 'app_sheet.dart';
 import 'interactive_webcam.dart';
+import 'station_overview.dart';
 import 'weather_details.dart';
 import '../models/drsi_station.dart';
 import '../providers/drsi_provider.dart';
-import 'drsi_sheet.dart';
 
 /// Opens the station detail sheet for [stationId].
 void showStationSheet(BuildContext context, int stationId, {String? roadId}) {
@@ -76,43 +76,14 @@ class StationSheet extends StatelessWidget {
             station: station,
             autoRefresh: const Duration(seconds: 60),
             showHistory: true,
-            overlayTemp: station.temperatureC,
           ),
           const SizedBox(height: 16),
         ],
-        if (road != null) ...[
-          _sectionLabel(cs, Icons.add_road, 'Cestišče'),
-          DrsiRoadSection(station: road, roadOnly: station.weather != null),
-          const SizedBox(height: 18),
-          if (station.weather != null)
-            _sectionLabel(cs, Icons.thermostat, 'Vreme'),
-        ],
-        if (station.weather != null)
-          WeatherDetailsView(weather: station.weather!)
-        else if (road == null)
+        if (station.weather != null || road != null)
+          StationOverview(station: station, road: road)
+        else
           _cameraOnlyNote(context),
       ],
-    );
-  }
-
-  Widget _sectionLabel(ColorScheme cs, IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: cs.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Text(
-            text.toUpperCase(),
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: .6,
-            ),
-          ),
-        ],
-      ),
     );
   }
 

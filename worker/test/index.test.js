@@ -83,3 +83,25 @@ test('only one snapshot per camera per hour, however often it is offered', async
   assert.equal((await latestSnapshot(env, cam, t(23, 30))).body, 'next');
   assert.equal(await latestSnapshot(env, cam, new Date(t(23, 30).getTime() + 3600e3)), null);
 });
+
+import { weatherPoints, mergeWeatherHour, stationSeries } from '../src/snapshots.js';
+
+test('weather history keeps one entry per hour and the newest 25', () => {
+  const feed = [
+    { stationId: 2, weather: { outdoorTemperatureC: 1.5, humidityPercentage: 90, windSpeedKmh: 3, windGustKmh: null, dailyRainMm: 6 } },
+    { stationId: 3, weather: null },
+  ];
+  const pts = weatherPoints(feed);
+  assert.deepEqual(pts, { 2: [1.5, 90, 3, null, 6] });
+  let doc = { hours: [] };
+  for (let h = 0; h < 30; h++) {
+    doc = mergeWeatherHour(doc, h < 24 ? `20261126${String(h).padStart(2, '0')}` : `20261127${String(h - 24).padStart(2, '0')}`, pts);
+  }
+  assert.equal(doc.hours.length, 25);
+  doc = mergeWeatherHour(doc, '2026112705', { 2: [9, 1, 1, 1, 1] });
+  assert.equal(doc.hours.length, 25);
+  const series = stationSeries(doc, '2');
+  assert.equal(series.at(-1).t, 9);
+  assert.equal(series.at(-1).at, '2026-11-27T05:00:00Z');
+  assert.deepEqual(stationSeries(doc, '999'), []);
+});
