@@ -537,14 +537,6 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
                   ),
                 ),
               ),
-              if (hasChart)
-                _readout(
-                  cs,
-                  metric,
-                  color,
-                  points[sel ?? points.length - 1],
-                  sel,
-                ),
               if (hasChart && !widget.fullscreen)
                 SizedBox(
                   width: 32,
@@ -561,7 +553,11 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          if (hasChart) ...[
+            const SizedBox(height: 6),
+            _readout(cs, metric, color, points[sel ?? points.length - 1], sel),
+          ],
+          const SizedBox(height: 10),
           // Fade between series; only the plot changes, the title and the
           // readout above update in place.
           _expandIf(
@@ -593,7 +589,7 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
                               _selectAt(d.localPosition.dx, c.maxWidth, points),
                           child: SizedBox(
                             key: ValueKey('${metric.name}-chart'),
-                            height: widget.fullscreen ? c.maxHeight : 96,
+                            height: widget.fullscreen ? c.maxHeight : 150,
                             width: c.maxWidth,
                             child: CustomPaint(
                               painter: _HistoryChartPainter(
@@ -604,6 +600,7 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
                                 grid: cs.outlineVariant,
                                 label: cs.onSurfaceVariant,
                                 marker: cs.onSurface,
+                                textScale: widget.fullscreen ? 1.2 : 1,
                               ),
                             ),
                           ),
@@ -627,6 +624,10 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
               ),
             ),
           ),
+          if (hasChart && metric == _Metric.wind) ...[
+            const SizedBox(height: 8),
+            _WindLegend(color: color, arrows: points.any((p) => p.d != null)),
+          ],
         ],
       ),
     );
@@ -670,39 +671,104 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
           if (p.g != null) 'sunki ${kmh(p.g!)}',
         ],
       ),
-      _Metric.rain => (WeatherFormat.rain(p.rain), const <String>[]),
+      _Metric.rain => (WeatherFormat.rain(p.rain), const ['v eni uri']),
     };
-    return Flexible(
-      flex: 2,
-      child: Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(
-              text: '$when  ',
-              style: sel == null
-                  ? TextStyle(color: cs.onSurfaceVariant)
-                  : AppTheme.numberStyle(color: cs.onSurfaceVariant),
-            ),
-            TextSpan(
-              text: main,
-              style: AppTheme.numberStyle(
-                fontSize: 13,
-                color: sel == null ? cs.onSurface : color,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            if (extras.isNotEmpty)
-              TextSpan(
-                text: '  ${extras.join(' · ')}',
-                style: TextStyle(color: cs.onSurfaceVariant),
-              ),
-          ],
+    // Big value in the series colour, the time and secondary values beside
+    // it; two lines reserved so the card doesn't jump while scrubbing.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          main,
+          key: const ValueKey('chart-readout'),
+          style: AppTheme.numberStyle(
+            fontSize: widget.fullscreen ? 32 : 26,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
         ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.right,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-      ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: sel == null ? 'zdaj' : 'ob $when',
+                  style: AppTheme.numberStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface,
+                  ),
+                ),
+                if (extras.isNotEmpty)
+                  TextSpan(text: '\n${extras.join(' · ')}'),
+              ],
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Key under the wind chart: what the solid and dashed lines and the arrows
+/// mean.
+class _WindLegend extends StatelessWidget {
+  final Color color;
+  final bool arrows;
+
+  const _WindLegend({required this.color, required this.arrows});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final style = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      color: cs.onSurfaceVariant,
+    );
+    Widget item(Widget mark, String text) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        mark,
+        const SizedBox(width: 6),
+        Text(text, style: style),
+      ],
+    );
+    return Wrap(
+      spacing: 16,
+      runSpacing: 4,
+      children: [
+        item(Container(width: 16, height: 3, color: color), 'Povprečni veter'),
+        item(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < 3; i++)
+                Container(
+                  width: 4,
+                  height: 2,
+                  margin: const EdgeInsets.only(right: 2),
+                  color: color.withValues(alpha: .8),
+                ),
+            ],
+          ),
+          'Sunki',
+        ),
+        if (arrows)
+          item(
+            Icon(Icons.navigation, size: 14, color: cs.onSurface),
+            'Smer pihanja',
+          ),
+      ],
     );
   }
 }
@@ -849,10 +915,13 @@ class _RangeBar extends StatelessWidget {
   }
 }
 
-/// Draws one 24-hour series: temperature as a filled line, wind as a filled
-/// line with gusts dashed above it, rain as hourly bars.
+/// Draws one 24-hour series: temperature as a smooth filled line, wind as a
+/// line with gusts dashed above it and direction arrows on top, rain as
+/// hourly bars. Three labelled gridlines and a 6-hourly time axis.
 class _HistoryChartPainter extends CustomPainter {
-  static const double leftPad = 30;
+  static const double leftPad = 34;
+  static const double _arrowBand = 22;
+  static const double _bottomPad = 18;
 
   final _Metric metric;
   final List<_ChartPoint> points;
@@ -862,6 +931,9 @@ class _HistoryChartPainter extends CustomPainter {
   final Color label;
   final Color marker;
 
+  /// Larger type for the fullscreen view.
+  final double textScale;
+
   _HistoryChartPainter({
     required this.metric,
     required this.points,
@@ -870,6 +942,7 @@ class _HistoryChartPainter extends CustomPainter {
     required this.grid,
     required this.label,
     required this.marker,
+    this.textScale = 1,
   });
 
   double? _primary(_ChartPoint p) => switch (metric) {
@@ -878,39 +951,43 @@ class _HistoryChartPainter extends CustomPainter {
     _Metric.rain => p.rain,
   };
 
+  /// A "nice" step (1, 2, 5 × 10ⁿ) so gridlines land on round values.
+  static double _niceStep(double span, int steps) {
+    final raw = span / steps;
+    final mag = math.pow(10, (math.log(raw) / math.ln10).floor()).toDouble();
+    for (final m in const [1.0, 2.0, 5.0, 10.0]) {
+      if (raw <= m * mag) return m * mag;
+    }
+    return 10 * mag;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    const bottomPad = 14.0;
     final arrows = metric == _Metric.wind && points.any((p) => p.d != null);
     final chart = Rect.fromLTRB(
       leftPad,
-      arrows ? 20 : 4,
-      size.width,
-      size.height - bottomPad,
+      arrows ? _arrowBand + 4 : 8,
+      size.width - 4,
+      size.height - _bottomPad,
     );
     final values = [
       for (final p in points) ?_primary(p),
       if (metric == _Metric.wind)
         for (final p in points) ?p.g,
     ];
-    double lo;
-    double hi;
-    switch (metric) {
-      case _Metric.temp:
-        lo = values.reduce(math.min);
-        hi = values.reduce(math.max);
-        if (hi - lo < 2) {
-          final mid = (hi + lo) / 2;
-          lo = mid - 1;
-          hi = mid + 1;
-        }
-      case _Metric.wind:
-        lo = 0;
-        hi = math.max(values.fold(0.0, math.max), 10);
-      case _Metric.rain:
-        lo = 0;
-        hi = math.max(values.fold(0.0, math.max), 1);
-    }
+    var lo = values.reduce(math.min);
+    var hi = values.reduce(math.max);
+    if (metric != _Metric.temp) lo = 0;
+    final minSpan = switch (metric) {
+      _Metric.temp => 4.0,
+      _Metric.wind => 10.0,
+      _Metric.rain => 1.0,
+    };
+    if (hi - lo < minSpan) hi = lo + minSpan;
+    final step = _niceStep(hi - lo, 3);
+    lo = (lo / step).floor() * step;
+    hi = math.max((hi / step).ceil() * step, lo + 2 * step);
+
     final t0 = points.first.at.millisecondsSinceEpoch.toDouble();
     final t1 = points.last.at.millisecondsSinceEpoch.toDouble();
     final dt = math.max(t1 - t0, 1.0);
@@ -918,14 +995,21 @@ class _HistoryChartPainter extends CustomPainter {
         chart.left + (at.millisecondsSinceEpoch - t0) / dt * chart.width;
     double y(double v) => chart.bottom - (v - lo) / (hi - lo) * chart.height;
 
-    void text(String s, Offset at, {bool right = false, bool center = false}) {
+    void text(
+      String s,
+      Offset at, {
+      bool right = false,
+      bool center = false,
+      Color? color,
+      FontWeight weight = FontWeight.w700,
+    }) {
       final tp = TextPainter(
         text: TextSpan(
           text: s,
-          style: TextStyle(
-            color: label,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
+          style: AppTheme.numberStyle(
+            fontSize: 11 * textScale,
+            fontWeight: weight,
+            color: color ?? label,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -933,42 +1017,90 @@ class _HistoryChartPainter extends CustomPainter {
       var dx = at.dx;
       if (right) dx -= tp.width;
       if (center) dx -= tp.width / 2;
+      dx = dx.clamp(0, size.width - tp.width);
       tp.paint(canvas, Offset(dx, at.dy - tp.height / 2));
     }
 
-    String axisLabel(double v) => switch (metric) {
-      _Metric.temp => '${v.round()}°',
-      _Metric.wind => '${v.round()}',
-      _Metric.rain => hi < 10 ? WeatherFormat.decimal(v) : '${v.round()}',
+    String num(double v) => (v - v.roundToDouble()).abs() < 1e-6
+        ? '${v.round()}'
+        : WeatherFormat.decimal(v);
+    final unit = switch (metric) {
+      _Metric.temp => '°',
+      _Metric.wind => '',
+      _Metric.rain => '',
     };
 
+    // Gridlines: dashed, with values on the left; the unit sits on the top one.
     final gridPaint = Paint()
-      ..color = grid.withValues(alpha: .6)
+      ..color = grid.withValues(alpha: .5)
       ..strokeWidth = 1;
-    for (final v in [hi, lo]) {
-      canvas.drawLine(
-        Offset(chart.left, y(v)),
-        Offset(chart.right, y(v)),
-        gridPaint,
+    for (var v = lo; v <= hi + step / 2; v += step) {
+      final gy = y(v);
+      for (var dx = chart.left; dx < chart.right; dx += 5) {
+        canvas.drawLine(
+          Offset(dx, gy),
+          Offset(math.min(dx + 2.5, chart.right), gy),
+          gridPaint,
+        );
+      }
+      text('${num(v)}$unit', Offset(chart.left - 6, gy), right: true);
+    }
+    final unitLabel = switch (metric) {
+      _Metric.temp => null,
+      _Metric.wind => 'km/h',
+      _Metric.rain => 'mm',
+    };
+    if (unitLabel != null) {
+      text(
+        unitLabel,
+        Offset(chart.left - 6, chart.top - 10 * textScale),
+        right: true,
+        weight: FontWeight.w600,
       );
-      text(axisLabel(v), Offset(chart.left - 5, y(v)), right: true);
     }
     // Freezing line when the temperature range crosses 0 °C.
     if (metric == _Metric.temp && lo < 0 && hi > 0) {
-      final zero = Paint()
-        ..color = const Color(0xFF42A5F5)
-        ..strokeWidth = 1;
-      for (var dx = chart.left; dx < chart.right; dx += 6) {
-        canvas.drawLine(Offset(dx, y(0)), Offset(dx + 3, y(0)), zero);
-      }
+      canvas.drawLine(
+        Offset(chart.left, y(0)),
+        Offset(chart.right, y(0)),
+        Paint()
+          ..color = const Color(0xFF42A5F5).withValues(alpha: .8)
+          ..strokeWidth = 1.2,
+      );
     }
+
+    // Time axis: every 6 hours on the hour, and "zdaj" at the end.
+    final axisY = size.height - _bottomPad / 2 + 1;
+    final tickPaint = Paint()
+      ..color = grid
+      ..strokeWidth = 1;
+    final first = points.first.at;
+    var tick = DateTime(first.year, first.month, first.day, first.hour + 1);
+    while (tick.hour % 6 != 0) {
+      tick = tick.add(const Duration(hours: 1));
+    }
+    final nowX = x(points.last.at);
+    for (; x(tick) < nowX - 28; tick = tick.add(const Duration(hours: 6))) {
+      final tx = x(tick);
+      canvas.drawLine(
+        Offset(tx, chart.bottom),
+        Offset(tx, chart.bottom + 3),
+        tickPaint,
+      );
+      text(
+        '${tick.hour.toString().padLeft(2, '0')}h',
+        Offset(tx, axisY),
+        center: true,
+      );
+    }
+    text('zdaj', Offset(chart.right, axisY), right: true, color: marker);
 
     if (metric == _Metric.rain) {
       _paintBars(canvas, chart, x, y);
     } else {
-      if (metric == _Metric.wind) _paintGusts(canvas, x, y);
+      if (metric == _Metric.wind) _paintGusts(canvas, chart, x, y);
       _paintLine(canvas, chart, x, y);
-      if (arrows) _paintDirections(canvas, chart, x);
+      if (arrows) _paintDirections(canvas, x);
     }
 
     final sel = selected;
@@ -977,194 +1109,180 @@ class _HistoryChartPainter extends CustomPainter {
       final v = _primary(p);
       final dx = x(p.at);
       canvas.drawLine(
-        Offset(dx, chart.top),
+        Offset(dx, chart.top - (arrows ? _arrowBand : 0)),
         Offset(dx, chart.bottom),
         Paint()
-          ..color = marker.withValues(alpha: .5)
-          ..strokeWidth = 1,
+          ..color = marker.withValues(alpha: .6)
+          ..strokeWidth = 1.2,
       );
-      if (v != null) {
+      if (v != null && metric != _Metric.rain) {
         final at = Offset(dx, y(v));
-        canvas.drawCircle(at, 6, Paint()..color = line.withValues(alpha: .25));
-        canvas.drawCircle(at, 4, Paint()..color = line);
+        canvas.drawCircle(at, 8, Paint()..color = line.withValues(alpha: .25));
+        canvas.drawCircle(at, 5, Paint()..color = line);
         canvas.drawCircle(
           at,
-          4,
+          5,
           Paint()
             ..color = marker
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5,
+            ..strokeWidth = 2,
         );
       }
     }
-
-    // Time axis: start, middle, now.
-    String hh(DateTime d) => '${d.hour.toString().padLeft(2, '0')}h';
-    final axisY = size.height - bottomPad / 2 + 2;
-    text(hh(points.first.at), Offset(chart.left, axisY));
-    final mid = DateTime.fromMillisecondsSinceEpoch((t0 + dt / 2).round());
-    text(hh(mid), Offset(chart.center.dx, axisY), center: true);
-    text('zdaj', Offset(chart.right, axisY), right: true);
   }
 
-  /// The primary series as a line with a soft fill; gaps break the line.
+  /// A smooth path through [pts] (Catmull-Rom as cubic Béziers), with the
+  /// control points clamped vertically so it never overshoots a reading.
+  static Path _smooth(List<Offset> pts, {Path? into}) {
+    final path = into ?? Path();
+    path.moveTo(pts.first.dx, pts.first.dy);
+    for (var i = 0; i < pts.length - 1; i++) {
+      final p0 = i > 0 ? pts[i - 1] : pts[i];
+      final p1 = pts[i];
+      final p2 = pts[i + 1];
+      final p3 = i + 2 < pts.length ? pts[i + 2] : p2;
+      final lo = math.min(p1.dy, p2.dy);
+      final hi = math.max(p1.dy, p2.dy);
+      final c1 = Offset(
+        p1.dx + (p2.dx - p0.dx) / 6,
+        (p1.dy + (p2.dy - p0.dy) / 6).clamp(lo, hi),
+      );
+      final c2 = Offset(
+        p2.dx - (p3.dx - p1.dx) / 6,
+        (p2.dy - (p3.dy - p1.dy) / 6).clamp(lo, hi),
+      );
+      path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
+    }
+    return path;
+  }
+
+  /// Consecutive runs of present values as screen points (gaps break runs).
+  List<List<Offset>> _runs(
+    double? Function(_ChartPoint) value,
+    double Function(DateTime) x,
+    double Function(double) y,
+  ) {
+    final runs = <List<Offset>>[];
+    var run = <Offset>[];
+    for (final p in points) {
+      final v = value(p);
+      if (v == null) {
+        if (run.isNotEmpty) runs.add(run);
+        run = [];
+        continue;
+      }
+      run.add(Offset(x(p.at), y(v)));
+    }
+    if (run.isNotEmpty) runs.add(run);
+    return runs;
+  }
+
   void _paintLine(
     Canvas canvas,
     Rect chart,
     double Function(DateTime) x,
     double Function(double) y,
   ) {
-    final path = Path();
-    final fill = Path();
-    Offset? first;
-    Offset? last;
-    void closeFill() {
-      if (first != null && last != null) {
-        fill
-          ..lineTo(last.dx, chart.bottom)
-          ..lineTo(first!.dx, chart.bottom)
-          ..close();
-      }
-      first = null;
-    }
-
-    for (final p in points) {
-      final v = _primary(p);
-      if (v == null) {
-        closeFill();
-        last = null;
+    final stroke = Paint()
+      ..color = line
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    final fill = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [line.withValues(alpha: .30), line.withValues(alpha: 0)],
+      ).createShader(chart);
+    for (final run in _runs(_primary, x, y)) {
+      if (run.length == 1) {
+        canvas.drawCircle(run.first, 3, Paint()..color = line);
         continue;
       }
-      final o = Offset(x(p.at), y(v));
-      if (first == null) {
-        path.moveTo(o.dx, o.dy);
-        fill.moveTo(o.dx, o.dy);
-        first = o;
-      } else {
-        path.lineTo(o.dx, o.dy);
-        fill.lineTo(o.dx, o.dy);
-      }
-      last = o;
-    }
-    closeFill();
-
-    canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [line.withValues(alpha: .28), line.withValues(alpha: 0)],
-        ).createShader(chart),
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = line
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round,
-    );
-    final dot = Paint()..color = line.withValues(alpha: .55);
-    for (final p in points.take(points.length - 1)) {
-      final v = _primary(p);
-      if (v != null) canvas.drawCircle(Offset(x(p.at), y(v)), 1.8, dot);
+      final path = _smooth(run);
+      canvas.drawPath(
+        Path.from(path)
+          ..lineTo(run.last.dx, chart.bottom)
+          ..lineTo(run.first.dx, chart.bottom)
+          ..close(),
+        fill,
+      );
+      canvas.drawPath(path, stroke);
     }
     final now = _primary(points.last);
     if (now != null) {
-      canvas.drawCircle(
-        Offset(x(points.last.at), y(now)),
-        3.5,
-        Paint()..color = line,
-      );
+      final at = Offset(x(points.last.at), y(now));
+      canvas
+        ..drawCircle(at, 5, Paint()..color = line.withValues(alpha: .3))
+        ..drawCircle(at, 3.5, Paint()..color = line);
     }
   }
 
-  /// Wind direction as small arrows along the top, pointing where the wind
-  /// blows to; thinned out so they never crowd.
-  void _paintDirections(
-    Canvas canvas,
-    Rect chart,
-    double Function(DateTime) x,
-  ) {
-    final paint = Paint()
-      ..color = marker.withValues(alpha: .75)
-      ..style = PaintingStyle.fill;
-    const cy = 10.0;
+  /// Wind direction as arrows in a band above the chart, pointing where the
+  /// wind blows to; thinned out so they never crowd.
+  void _paintDirections(Canvas canvas, double Function(DateTime) x) {
+    final paint = Paint()..color = marker.withValues(alpha: .85);
+    const cy = _arrowBand / 2;
+    final s = 1.2 * textScale;
     double? lastX;
     for (var i = points.length - 1; i >= 0; i--) {
       final from = WeatherFormat.bearing(points[i].d);
       if (from == null) continue;
       final px = x(points[i].at);
-      if (lastX != null && lastX - px < 16) continue;
+      if (lastX != null && lastX - px < 22 * textScale) continue;
       lastX = px;
       // Bearing is where the wind comes from; screen angle 0 = up.
-      final a = (from + 180) * math.pi / 180;
       canvas
         ..save()
         ..translate(px, cy)
-        ..rotate(a);
-      final path = Path()
-        ..moveTo(0, -6)
-        ..lineTo(4, 4)
-        ..lineTo(0, 2)
-        ..lineTo(-4, 4)
-        ..close();
+        ..rotate((from + 180) * math.pi / 180)
+        ..scale(s);
       canvas
-        ..drawPath(path, paint)
+        ..drawPath(
+          Path()
+            ..moveTo(0, -7)
+            ..lineTo(5, 5)
+            ..lineTo(0, 2.5)
+            ..lineTo(-5, 5)
+            ..close(),
+          paint,
+        )
         ..restore();
     }
   }
 
-  /// Gusts as a thin dashed line above the wind.
+  /// Gusts as a dashed smooth line above the wind.
   void _paintGusts(
     Canvas canvas,
+    Rect chart,
     double Function(DateTime) x,
     double Function(double) y,
   ) {
     final paint = Paint()
-      ..color = line.withValues(alpha: .7)
-      ..strokeWidth = 1.4
+      ..color = line.withValues(alpha: .75)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
       ..strokeCap = StrokeCap.round;
-    Offset? prev;
-    for (final p in points) {
-      final g = p.g;
-      if (g == null) {
-        prev = null;
-        continue;
-      }
-      final o = Offset(x(p.at), y(g));
-      if (prev != null) {
-        final d = o - prev;
-        final len = d.distance;
-        if (len > 0) {
-          final step = d / len;
-          for (var s = 0.0; s < len; s += 6) {
-            canvas.drawLine(
-              prev + step * s,
-              prev + step * math.min(s + 3, len),
-              paint,
-            );
-          }
+    for (final run in _runs((p) => p.g, x, y)) {
+      if (run.length < 2) continue;
+      for (final metric in _smooth(run).computeMetrics()) {
+        for (var d = 0.0; d < metric.length; d += 7) {
+          canvas.drawPath(metric.extractPath(d, d + 3.5), paint);
         }
       }
-      canvas.drawCircle(o, 1.6, paint);
-      prev = o;
     }
   }
 
-  /// Rain per hour as bars centred on each hour.
+  /// Rain per hour as bars filling each hour's slot.
   void _paintBars(
     Canvas canvas,
     Rect chart,
     double Function(DateTime) x,
     double Function(double) y,
   ) {
-    final width = math.max(
-      2.0,
-      math.min(10.0, chart.width / points.length * .6),
-    );
+    final slot = chart.width / math.max(points.length - 1, 1);
+    final width = (slot * .7).clamp(3.0, 28.0);
     final paint = Paint()..color = line;
     final faint = Paint()..color = line.withValues(alpha: .45);
     for (var i = 0; i < points.length; i++) {
@@ -1172,16 +1290,12 @@ class _HistoryChartPainter extends CustomPainter {
       if (v == null || v <= 0) continue;
       final cx = x(points[i].at)
           .clamp(chart.left + width / 2, chart.right - width / 2);
+      final top = math.min(y(v), chart.bottom - 2);
       canvas.drawRRect(
         RRect.fromRectAndCorners(
-          Rect.fromLTRB(
-            cx - width / 2,
-            math.min(y(v), chart.bottom - 1.5),
-            cx + width / 2,
-            chart.bottom,
-          ),
-          topLeft: const Radius.circular(2),
-          topRight: const Radius.circular(2),
+          Rect.fromLTRB(cx - width / 2, top, cx + width / 2, chart.bottom),
+          topLeft: const Radius.circular(3),
+          topRight: const Radius.circular(3),
         ),
         // The last bar is the hour still in progress.
         i == points.length - 1 ? faint : paint,
@@ -1195,7 +1309,8 @@ class _HistoryChartPainter extends CustomPainter {
       old.selected != selected ||
       old.points.length != points.length ||
       old.points.last != points.last ||
-      old.line != line;
+      old.line != line ||
+      old.textScale != textScale;
 }
 
 class _Stat {
