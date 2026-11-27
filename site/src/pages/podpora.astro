@@ -1,0 +1,101 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { Bug, Download, MessageCircleQuestion } from "lucide-react";
+import type { FAQPage, WithContext } from "schema-dts";
+import { ISSUES_URL, NEW_ISSUE_URL, RELEASES_URL } from "@/lib/site";
+
+const description =
+	"Podpora za aplikacijo Prometnik: prijava napak in predlogov na GitHubu ter odgovori na pogosta vprašanja o namestitvi, kamerah, obvestilih in podatkih.";
+
+const faq = [
+	{
+		q: "Kako namestim APK na Android?",
+		a: "Na telefonu odprite zadnjo izdajo na GitHubu in prenesite datoteko, ki se konča na -android.apk. Odprite jo iz obvestila ali mape Prenosi. Ob prvi namestitvi Android vpraša, ali dovolite namestitev iz brskalnika ali upravitelja datotek. Nove različice potem aplikacija ponudi sama.",
+	},
+	{
+		q: "Kdaj bo Prometnik v Google Play in App Storu?",
+		a: "Kmalu. Ko bo objavljen, bo povezava na domači strani v razdelku Prenos.",
+	},
+	{
+		q: "Zakaj nekatere kamere nimajo zgodovine zadnjih 24 ur?",
+		a: "Zgodovino hrani naš strežnik samo za kamere vremenskih postaj, po en posnetek na uro. Če je bila kamera v kakšni uri nedosegljiva, na traku manjka tisti posnetek. Druge kamere DARS kažejo samo sliko v živo.",
+	},
+	{
+		q: "Slika kamere je stara ali se ne naloži.",
+		a: "Kamere upravljajo DARS, DRSI in ARSO; nekatere se osvežijo le na nekaj minut, včasih pa so nedosegljive. Tapnite gumb za osvežitev na sliki. Če kamera dlje časa ne deluje, je težava najverjetneje pri viru.",
+	},
+	{
+		q: "Ne dobivam obvestil za spremljane ceste.",
+		a: "Preverite, ali je za Prometnik v nastavitvah telefona dovoljeno pošiljanje obvestil in ali ste ceste dodali v zavihku Bližina (Izberi na karti). Za potovalne čase prižgite zvonček ob poti v zavihku Časi. Obvestila pripravi aplikacija, ko osveži podatke.",
+	},
+	{
+		q: "Ali so podatki uradni?",
+		a: "Ne. Prometnik prikazuje javne podatke DARS (promet.si, ceste.si), DRSI in ARSO, kot jih ti objavijo. Uradne prometne informacije so na promet.si.",
+	},
+];
+
+const schema: WithContext<FAQPage> = {
+	"@context": "https://schema.org",
+	"@type": "FAQPage",
+	mainEntity: faq.map(({ q, a }) => ({
+		"@type": "Question",
+		name: q,
+		acceptedAnswer: { "@type": "Answer", text: a },
+	})),
+};
+---
+
+<Layout title="Podpora" description={description} schema={schema}>
+  <section class="container-page py-section">
+    <div class="max-w-3xl">
+      <h1 class="font-display text-5xl font-black leading-tight sm:text-6xl">Podpora</h1>
+      <p class="mt-5 text-xl text-muted-foreground">
+        Nekaj ne deluje, manjka vam kamera ali imate predlog? Odprite prijavo na GitHubu. Odgovarja razvijalec aplikacije.
+      </p>
+    </div>
+
+    <div class="mt-12 grid gap-4 md:grid-cols-12">
+      <a
+        href={NEW_ISSUE_URL}
+        class="group rounded-xl border border-primary/40 bg-card p-8 transition-colors hover:border-primary md:col-span-7"
+      >
+        <Bug className="size-7 text-primary" aria-hidden="true" />
+        <h2 class="mt-5 font-display text-3xl font-black">Prijavite napako ali predlog</h2>
+        <p class="mt-2 text-muted-foreground">
+          Napišite različico aplikacije (zaslon O aplikaciji), telefon in kaj ste naredili, preden je šlo narobe. Pri kameri ali postaji dodajte njeno ime.
+        </p>
+        <p class="mt-5 text-lg font-bold text-primary group-hover:text-primary-hover">Nova prijava na GitHubu</p>
+      </a>
+      <div class="rounded-xl border border-border bg-card p-8 md:col-span-5">
+        <MessageCircleQuestion className="size-7 text-sky" aria-hidden="true" />
+        <h2 class="mt-5 font-display text-3xl font-black">Že prijavljeno?</h2>
+        <p class="mt-2 text-muted-foreground">
+          Poglejte odprte prijave. Če je vaša težava že tam, dodajte komentar ali palec gor, da vemo, koga še zadeva.
+        </p>
+        <a href={ISSUES_URL} class="mt-5 inline-block font-bold text-primary underline underline-offset-4 hover:text-primary-hover">Odprte prijave</a>
+      </div>
+    </div>
+
+    <div class="mt-20 grid gap-10 lg:grid-cols-12">
+      <h2 class="font-display text-3xl font-black leading-tight sm:text-4xl lg:col-span-4">Pogosta vprašanja</h2>
+      <div class="divide-y divide-border border-y border-border lg:col-span-8">
+        {faq.map(({ q, a }) => (
+          <details class="group py-5">
+            <summary class="flex cursor-pointer list-none items-start justify-between gap-6 text-lg font-bold [&::-webkit-details-marker]:hidden">
+              {q}
+              <span class="mt-1 text-primary transition-transform group-open:rotate-45" aria-hidden="true">+</span>
+            </summary>
+            <p class="mt-3 max-w-2xl text-muted-foreground">{a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+
+    <div class="mt-16 flex flex-col gap-4 rounded-xl border border-border bg-card p-7 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-muted-foreground">Nova različica morda že odpravlja vašo težavo.</p>
+      <a href={RELEASES_URL} class="inline-flex items-center gap-2 font-bold text-primary hover:text-primary-hover">
+        <Download className="size-5" aria-hidden="true" /> Preverite zadnjo izdajo
+      </a>
+    </div>
+  </section>
+</Layout>

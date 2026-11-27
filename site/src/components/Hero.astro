@@ -1,0 +1,75 @@
+---
+import { Picture } from "astro:assets";
+import { Download, ArrowDown } from "lucide-react";
+import stationShot from "@/assets/screens/01-postaja.webp";
+import mapShot from "@/assets/screens/02-karta.webp";
+import { LATEST_RELEASE_URL } from "@/lib/site";
+---
+
+<section class="relative isolate overflow-hidden">
+  <div class="bg-roads pointer-events-none absolute inset-0 -z-10 [mask-image:linear-gradient(to_bottom,black_60%,transparent)]" aria-hidden="true"></div>
+  <div class="pointer-events-none absolute -right-40 top-0 -z-10 size-[38rem] rounded-full bg-sky-deep/50 blur-3xl" aria-hidden="true"></div>
+
+  <div class="container-page grid items-center gap-14 pb-20 pt-12 md:pt-16 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-12 lg:gap-8 lg:py-16">
+    <div class="lg:col-span-7">
+      <h1 class="entrance entrance-1 font-display text-[2.6rem] font-black leading-[1.02] sm:text-6xl lg:text-[5rem]">
+        Poglejte cesto, <span class="text-primary">preden se odpeljete.</span>
+      </h1>
+      <p class="entrance entrance-2 mt-6 max-w-xl text-lg text-muted-foreground sm:text-xl">
+        Prometnik zbere zapore, zastoje, kamere, temperaturo cestišča in potovalne čase s slovenskih cest na eno karto.
+        Brezplačno, brez računa in brez oglasov.
+      </p>
+      <div class="entrance entrance-3 mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <a
+          href={LATEST_RELEASE_URL}
+          class="inline-flex h-13 whitespace-nowrap items-center justify-center gap-2.5 rounded-full bg-primary px-7 text-base font-bold text-primary-foreground shadow-[0_10px_30px_-10px] shadow-primary/50 transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-primary-hover active:scale-[0.98]"
+        >
+          <Download className="size-5" aria-hidden="true" />
+          Prenesi za Android
+        </a>
+        <a
+          href="#funkcije"
+          class="inline-flex h-13 whitespace-nowrap items-center justify-center gap-2 rounded-full border border-border px-6 text-base font-semibold text-foreground transition-colors hover:border-faint hover:bg-card"
+        >
+          Kaj zna
+          <ArrowDown className="size-4" aria-hidden="true" />
+        </a>
+      </div>
+      <p class="entrance entrance-4 mt-6 text-sm text-faint">Za iPhone in iz Google Play kmalu. Podatki: DARS / promet.si, ceste.si, DRSI.</p>
+    </div>
+
+    <div class="relative mx-auto w-full max-w-[26rem] lg:col-span-5 lg:max-w-none">
+      <div class="relative ml-auto w-[70%] sm:w-[66%]">
+        <div class="entrance entrance-2 overflow-hidden rounded-[2.2rem] border-[6px] border-muted bg-black shadow-2xl shadow-black/70">
+          <Picture
+            src={stationShot}
+            formats={["webp"]}
+            fallbackFormat="webp"
+            width={300}
+            widths={[260, 300, 600]}
+            sizes="(min-width: 1024px) 300px, 66vw"
+            alt="Postaja Babno Polje v aplikaciji: nočna slika kamere, trak zadnjih 24 ur, temperatura zraka −2,0 °C z dnevnim razponom in graf temperature"
+            loading="eager"
+            fetchpriority="high"
+            class="block h-auto w-full"
+          />
+        </div>
+      </div>
+      <div class="entrance entrance-4 absolute -bottom-8 left-0 w-[50%] -rotate-[5deg] sm:w-[46%]">
+        <div class="overflow-hidden rounded-[1.8rem] border-[5px] border-muted bg-black shadow-2xl shadow-black/80">
+          <Picture
+            src={mapShot}
+            formats={["webp"]}
+            fallbackFormat="webp"
+            width={220}
+            widths={[200, 220, 440]}
+            sizes="(min-width: 1024px) 220px, 46vw"
+            alt="Karta okolice Ljubljane z oznakami temperature, kamer in zapore ter odprta postaja Dragomer"
+            loading="eager"
+            class="block h-auto w-full"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

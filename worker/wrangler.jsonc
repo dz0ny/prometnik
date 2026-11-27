@@ -10,5 +10,17 @@
   // sixtieth of the cameras, so every camera gets one frame per hour.
   "triggers": { "crons": ["* * * * *"] },
   // Frames expire via a bucket lifecycle rule (2 days).
-  "r2_buckets": [{ "binding": "SNAPS", "bucket_name": "prometnik-cams" }]
+  "r2_buckets": [{ "binding": "SNAPS", "bucket_name": "prometnik-cams" }],
+  // The website (../site, Astro) is served as static assets by this same
+  // Worker on prometnik.dz0ny.dev: a request whose path matches a file gets
+  // the file; everything else (/cam, /history, /snap, /status, /weather)
+  // falls through to src/index.js. Build the site before deploying:
+  // (cd ../site && bun install && bun run build)
+  "routes": [{ "pattern": "prometnik.dz0ny.dev", "custom_domain": true }],
+  "assets": {
+    "directory": "../site/dist/client",
+    "binding": "ASSETS",
+    "html_handling": "force-trailing-slash",
+    "not_found_handling": "404-page"
+  }
 }

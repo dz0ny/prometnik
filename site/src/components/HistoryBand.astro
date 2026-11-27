@@ -1,0 +1,50 @@
+---
+import { Picture } from "astro:assets";
+import historyShot from "@/assets/screens/04-karta-kamera.webp";
+
+const points = [
+	{ title: "Slika vsako uro", body: "Kamere vremenskih postaj shranijo po en posnetek na uro. Na traku pod sliko je zadnjih 24 ur, Predvajaj jih zavrti kot kratek film." },
+	{ title: "Zrak, veter, padavine", body: "Temperatura z dnevnim najnižjim in najvišjim, vlaga, veter s sunki in smerjo, zapisano z besedo: »iz vzhoda-jugovzhoda«." },
+	{ title: "Grafi za 24 ur", body: "Temperatura, veter s puščicami smeri in padavine s seštevkom za cel dan. Graf razprete čez cel zaslon." },
+];
+---
+
+<section id="kamere" class="py-section scroll-mt-16" aria-labelledby="kamere-naslov">
+  <div class="container-page grid items-center gap-12 lg:grid-cols-12 lg:gap-16">
+    <div class="order-2 lg:order-1 lg:col-span-5" data-reveal>
+      <div class="relative mx-auto w-[72%] max-w-[19rem] lg:w-full">
+        <div class="overflow-hidden rounded-[2rem] border-[6px] border-muted bg-black shadow-2xl shadow-black/60">
+          <Picture
+            src={historyShot}
+            formats={["webp"]}
+            fallbackFormat="webp"
+            width={304}
+            widths={[260, 304, 608]}
+            sizes="(min-width: 1024px) 304px, 72vw"
+            alt="Kamera Hrib – Loški potok: posnetek ob 19.00, pod njim trak posnetkov zadnjih 24 ur in gumb Predvajaj"
+            loading="lazy"
+            class="block h-auto w-full"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="order-1 lg:order-2 lg:col-span-7">
+      <div class="lane-dash w-40" aria-hidden="true"></div>
+      <h2 id="kamere-naslov" class="mt-6 font-display text-4xl font-black leading-tight sm:text-5xl" data-reveal>
+        Kakšna je bila cesta <span class="text-primary">pred štirimi urami?</span>
+      </h2>
+      <p class="mt-5 max-w-xl text-lg text-muted-foreground" data-reveal>
+        Slika v živo pove, kako je zdaj. Zgodovina pove, ali je ponoči snežilo in ali so plužili. Vremenska postaja ob cesti pa doda številke.
+      </p>
+      <dl class="mt-10 space-y-6" data-reveal>
+        {points.map(({ title, body }) => (
+          <div class="grid gap-1 border-t border-border pt-5 sm:grid-cols-[11rem_1fr] sm:gap-6">
+            <dt class="font-bold text-foreground">{title}</dt>
+            <dd class="text-muted-foreground">{body}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  </div>
+</section>

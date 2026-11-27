@@ -1,0 +1,48 @@
+---
+import icon from "@/assets/icon.png";
+import { Picture } from "astro:assets";
+
+const path = Astro.url.pathname;
+const onHome = path === "/";
+const links = [
+	{ href: onHome ? "#funkcije" : "/#funkcije", label: "Funkcije" },
+	{ href: onHome ? "#kamere" : "/#kamere", label: "Kamere in vreme" },
+	{ href: onHome ? "#casi" : "/#casi", label: "Časi" },
+	{ href: "/podpora/", label: "Podpora" },
+];
+const isActive = (href: string) => href.startsWith("/") && !href.startsWith("/#") && path.startsWith(href);
+---
+
+<header class="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-md">
+  <div class="container-page flex h-16 items-center justify-between gap-4">
+    <a href="/" class="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight" aria-label="Prometnik, domov">
+      <Picture
+        src={icon}
+        formats={["webp"]}
+        fallbackFormat="webp"
+        width={32}
+        widths={[32, 64]}
+        sizes="32px"
+        alt=""
+        class="size-8 rounded-[0.6rem]"
+        loading="eager"
+      />
+      Prometnik
+    </a>
+    <nav aria-label="Glavna navigacija" class="flex items-center gap-1 sm:gap-2">
+      {links.map(({ href, label }) => (
+        <a
+          href={href}
+          class:list={[
+            "hidden rounded-md px-3 py-2 text-[0.95rem] text-muted-foreground transition-colors hover:text-foreground md:inline-block",
+            isActive(href) && "text-foreground",
+          ]}
+        >{label}</a>
+      ))}
+      <a
+        href={onHome ? "#prenos" : "/#prenos"}
+        class="ml-1 inline-flex h-10 whitespace-nowrap items-center rounded-full bg-primary px-5 text-[0.95rem] font-bold text-primary-foreground transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-primary-hover active:scale-[0.98]"
+      >Prenesi</a>
+    </nav>
+  </div>
+</header>

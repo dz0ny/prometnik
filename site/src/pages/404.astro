@@ -1,0 +1,49 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import type { WebPage, WithContext } from "schema-dts";
+
+const schema: WithContext<WebPage> = {
+	"@context": "https://schema.org",
+	"@type": "WebPage",
+	name: "Stran ne obstaja",
+	description: "Strani, ki jo iščete, ni.",
+};
+
+// Where a visitor — or an agent that followed a stale link — should look next.
+// Keep these as real, resolving routes: a recovery list that 404s too is worse
+// than no list at all. Add the site's main sections here as they get built.
+const recovery = [
+	{ href: "/", label: "Domov", note: "O aplikaciji Prometnik in prenos" },
+	{ href: "/podpora/", label: "Podpora", note: "Prijava napak in pogosta vprašanja" },
+	{ href: "/zasebnost/", label: "Zasebnost", note: "Kaj aplikacija počne s podatki" },
+	{ href: "/sitemap-index.xml", label: "Kazalo strani", note: "Vse strani na tem spletnem mestu" },
+];
+---
+
+<Layout
+  title="Stran ne obstaja"
+  description="Strani, ki jo iščete, ni."
+  noindex={true}
+  schema={schema}
+>
+  <section class="container-page flex min-h-[60vh] items-center justify-center py-section">
+    <div class="mx-auto max-w-md text-center">
+      <h1 class="font-display text-7xl font-black text-primary">404</h1>
+      <p class="mt-3 text-muted-foreground">
+        Ta cesta je zaprta. Stran je morda prestavljena ali pa nikoli ni obstajala.
+      </p>
+
+      <h2 class="mt-8 font-sans text-sm font-semibold uppercase tracking-wide text-faint">
+        Kam naprej
+      </h2>
+      <ul class="mt-3 space-y-2 text-left">
+        {recovery.map(({ href, label, note }) => (
+          <li>
+            <a href={href} class="text-primary underline underline-offset-4">{label}</a>
+            <span class="text-muted-foreground"> — {note}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+</Layout>

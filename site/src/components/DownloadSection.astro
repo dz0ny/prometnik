@@ -1,0 +1,67 @@
+---
+import { Smartphone, Apple, Store, Download } from "lucide-react";
+import { LATEST_RELEASE_URL, RELEASES_URL } from "@/lib/site";
+
+// At launch: set these once the listings are public. While null, the card
+// shows "Kmalu" and links nowhere.
+const PLAY_URL: string | null = null;
+const APP_STORE_URL: string | null = null;
+---
+
+<section id="prenos" class="py-section scroll-mt-16" aria-labelledby="prenos-naslov">
+  <div class="container-page">
+    <div class="grid gap-6 lg:grid-cols-12 lg:items-end" data-reveal>
+      <h2 id="prenos-naslov" class="font-display text-4xl font-black leading-tight sm:text-5xl lg:col-span-7">
+        Namestite Prometnik.
+      </h2>
+      <p class="text-lg text-muted-foreground lg:col-span-5">
+        Za Android je na voljo kot datoteka APK. Google Play in App Store prideta kmalu.
+      </p>
+    </div>
+
+    <div class="mt-12 grid gap-4 lg:grid-cols-12">
+      <article class="flex flex-col justify-between rounded-xl border border-primary/40 bg-card p-8 lg:col-span-7 lg:row-span-2 lg:p-10" data-reveal>
+        <div>
+          <Smartphone className="size-8 text-primary" aria-hidden="true" />
+          <h3 class="mt-5 text-3xl font-extrabold">Android</h3>
+          <p class="mt-3 max-w-md text-muted-foreground">
+            Na telefonu prenesite APK zadnje izdaje z GitHuba in ga odprite. Ob prvi namestitvi Android vpraša, ali dovolite namestitev iz brskalnika.
+            Potem se aplikacija posodablja sama: ko izide nova različica, jo ponudi v aplikaciji.
+          </p>
+        </div>
+        <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+          <a
+            href={LATEST_RELEASE_URL}
+            class="inline-flex h-13 whitespace-nowrap items-center justify-center gap-2.5 rounded-full bg-primary px-7 font-bold text-primary-foreground transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-primary-hover active:scale-[0.98]"
+          >
+            <Download className="size-5" aria-hidden="true" />
+            Prenesi APK
+          </a>
+          <a href={RELEASES_URL} class="inline-flex h-13 whitespace-nowrap items-center justify-center rounded-full px-5 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+            Vse izdaje
+          </a>
+        </div>
+      </article>
+
+      <article class="rounded-xl border border-border bg-card p-7 lg:col-span-5" data-reveal>
+        <Store className="size-6 text-sky" aria-hidden="true" />
+        <h3 class="mt-4 text-xl font-bold">Google Play</h3>
+        {PLAY_URL ? (
+          <a href={PLAY_URL} class="mt-2 inline-block text-primary underline underline-offset-4">Odpri v trgovini</a>
+        ) : (
+          <p class="mt-2 text-[0.97rem] text-muted-foreground"><span class="mr-2 inline-block rounded-full bg-muted px-2.5 py-0.5 text-sm font-bold text-foreground">Kmalu</span>Posodobitve prek trgovine.</p>
+        )}
+      </article>
+
+      <article class="rounded-xl border border-border bg-card p-7 lg:col-span-5" data-reveal>
+        <Apple className="size-6 text-sky" aria-hidden="true" />
+        <h3 class="mt-4 text-xl font-bold">iPhone in iPad</h3>
+        {APP_STORE_URL ? (
+          <a href={APP_STORE_URL} class="mt-2 inline-block text-primary underline underline-offset-4">Odpri v App Storu</a>
+        ) : (
+          <p class="mt-2 text-[0.97rem] text-muted-foreground"><span class="mr-2 inline-block rounded-full bg-muted px-2.5 py-0.5 text-sm font-bold text-foreground">Kmalu</span>V App Storu.</p>
+        )}
+      </article>
+    </div>
+  </div>
+</section>

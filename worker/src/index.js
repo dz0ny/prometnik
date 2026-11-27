@@ -140,6 +140,8 @@ export default {
     if (url.pathname === '/status') return handleStatus(env);
     if (url.pathname === '/weather') return handleWeather(url, env);
     if (url.pathname !== '/cam') {
+      // Not an API path and no site file matched: the site's 404 page.
+      if (env.ASSETS) return env.ASSETS.fetch(request);
       return new Response('Not found', { status: 404 });
     }
     const cam = cameraUrl(url.searchParams.get('u'));

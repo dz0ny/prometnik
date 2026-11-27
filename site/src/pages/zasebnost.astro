@@ -1,0 +1,158 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import type { WebPage, WithContext } from "schema-dts";
+import { GITHUB_URL, ISSUES_URL } from "@/lib/site";
+
+const updated = "27. november 2026";
+const description =
+	"Politika zasebnosti aplikacije Prometnik: lokacija ostane na telefonu, kateri strežniki dobijo zahteve in zakaj. Brez računov, oglasov in analitike.";
+
+const schema: WithContext<WebPage> = {
+	"@context": "https://schema.org",
+	"@type": "WebPage",
+	name: "Politika zasebnosti",
+	description,
+	inLanguage: "sl",
+	dateModified: "2026-11-27",
+};
+
+const services = [
+	{
+		host: "prometnik-cams.dz0ny.workers.dev",
+		who: "Prometnikov strežnik za kamere in vreme (Cloudflare Workers)",
+		what: "Slike kamer DARS, DRSC in ARSO gredo prek njega, da jih ne nalaga vsak telefon posebej, posnetki zadnjih 24 ur in urne meritve vremenskih postaj pa so shranjeni samo tu. Zahteva vsebuje naslov slike kamere ali številko postaje, nič o vas.",
+	},
+	{
+		host: "www.promet.si",
+		who: "DARS, prometne informacije",
+		what: "Dogodki, kamere, potovalni časi, počivališča in burja. Aplikacija prenese celoten seznam za Slovenijo, ne samo za vašo okolico.",
+	},
+	{
+		host: "www.ceste.si",
+		who: "DARS, vreme na cestah",
+		what: "Vremenske postaje s trenutnimi meritvami in kamerami.",
+	},
+	{
+		host: "drsi.cgs-labs.si",
+		who: "Direkcija RS za infrastrukturo (DRSI), sistem CVIS",
+		what: "Stanje cestišča na cestnih postajah. Ta strežnik je dosegljiv samo prek nešifriranega HTTP, zato je vsebina zahteve (seznam postaj) vidna na poti.",
+	},
+	{
+		host: "strežniki upravljavcev kamer",
+		who: "Viri slik kamer (DARS, DRSC, ARSO in drugi)",
+		what: "Slike s kamer DARS (kamere.dars.si), DRSC in ARSO pridejo prek našega strežnika. Slike kamer z drugih strežnikov telefon naloži neposredno pri upravljavcu kamere.",
+	},
+	{
+		host: "server.arcgisonline.com, tile.openstreetmap.org, mapserver.mapy.cz",
+		who: "Esri, OpenStreetMap, Seznam.cz (Mapy.cz)",
+		what: "Ploščice karte za izbrano podlago. Zahteva vsebuje območje karte, ki si ga ogledujete.",
+	},
+	{
+		host: "api.github.com, github.com",
+		who: "GitHub",
+		what: "Samo različica za Android, nameščena z GitHuba (ne iz trgovine): ob zagonu preveri, ali je izšla nova izdaja, in jo na vašo željo prenese.",
+	},
+];
+---
+
+<Layout title="Politika zasebnosti" description={description} schema={schema}>
+  <article class="container-page py-section">
+    <header class="max-w-3xl">
+      <h1 class="font-display text-5xl font-black leading-tight sm:text-6xl">Politika zasebnosti</h1>
+      <p class="mt-4 text-faint">Velja od {updated}</p>
+      <p class="mt-6 text-xl text-muted-foreground">
+        Na kratko: Prometnik nima uporabniških računov, oglasov, analitike ali poročanja o napakah. Vaša lokacija ostane na telefonu.
+        Aplikacija s spleta prenaša javne prometne in vremenske podatke. Spodaj je natančno opisano, koga pri tem kliče in zakaj.
+      </p>
+    </header>
+
+    <div class="prose-cesta mt-12">
+      <h2>Kdo odgovarja za aplikacijo</h2>
+      <p>
+        Aplikacijo Prometnik razvija in vzdržuje Janez Troha. Izvorna koda je javna na <a href={GITHUB_URL}>GitHubu</a>.
+        Za vprašanja o zasebnosti odprite <a href={ISSUES_URL}>prijavo na GitHubu</a>.
+      </p>
+
+      <h2>Podatki, ki ostanejo na napravi</h2>
+      <p>Aplikacija na telefonu shrani:</p>
+      <ul>
+        <li>nastavitve: izbrano podlago karte, prikazane sloje in filtre dogodkov,</li>
+        <li>priljubljene postaje in spremljane ceste ter poti, za katere ste vklopili obvestila,</li>
+        <li>predpomnjene ploščice karte in slike kamer, da se ob naslednjem odprtju hitreje naložijo.</li>
+      </ul>
+      <p>Teh podatkov ne pošiljamo nikamor. Ne moremo jih videti in ne hranimo kopije v oblaku.</p>
+
+      <h2>Lokacija</h2>
+      <p>
+        Za zavihek Bližina in opozorila o dogodkih v okolici aplikacija vpraša za lokacijo. Uporablja jo <strong>samo, ko je aplikacija odprta</strong>,
+        v ozadju je ne spremlja. Kateri dogodki so blizu vas, izračuna telefon sam iz seznama, ki velja za vso Slovenijo:
+        <strong>vaše lokacije ne pošlje ne nam ne viru podatkov</strong>.
+      </p>
+      <p>
+        Posredno lahko območje vidijo ponudniki kart: ko karta naloži ploščice za okolico, strežnik vidi, katero območje se prikazuje.
+        Ko odprete navigacijo do počivališča, se odpre aplikacija Zemljevidi (Apple ali Google) s koordinatami počivališča; za tisto aplikacijo veljajo njena pravila.
+      </p>
+
+      <h2>Obvestila</h2>
+      <p>
+        Obvestila o dogodkih na spremljanih cestah in spremembah potovalnih časov pripravi aplikacija sama na telefonu (lokalna obvestila).
+        Ni strežnika za potisna obvestila in nobenega žetona naprave ne pošiljamo nikamor.
+      </p>
+
+      <h2>Kaj aplikacija pošlje na splet</h2>
+      <p>
+        Vsaka zahteva, kot vedno na spletu, razkrije vaš IP naslov in osnovne podatke o odjemalcu. Imena, e-pošte, lokacije ali česa, kar ste shranili,
+        aplikacija ne pošilja nikamor.
+      </p>
+      <ul class="services">
+        {services.map(({ host, who, what }) => (
+          <li class="border-t border-border py-4">
+            <p class="font-bold text-foreground">{who}</p>
+            <p class="mt-0.5 text-sm"><code>{host}</code></p>
+            <p class="mt-2">{what}</p>
+          </li>
+        ))}
+      </ul>
+
+      <h3>Naš strežnik za kamere in vreme</h3>
+      <p>
+        Strežnik <code>prometnik-cams.dz0ny.workers.dev</code> teče pri Cloudflare. Shranjuje samo javne podatke: sliko vsake kamere nekaj minut v predpomnilniku,
+        urne posnetke vremenskih kamer za zgodovino (izbrišejo se po dveh dneh) in urne meritve vremenskih postaj. Uporabniških podatkov ne shranjuje in ne gradi profilov.
+      </p>
+      <p>
+        Cloudflare kot ponudnik infrastrukture obdeluje IP naslove za dostavo in zaščito pred zlorabami. Za odpravljanje napak so na strežniku vklopljeni Cloudflarovi
+        dnevniki delovanja, ki zahteve hranijo omejen čas. Ne povezujemo jih z osebami in jih ne uporabljamo za nič drugega.
+      </p>
+
+      <h2>Česa Prometnik ne počne</h2>
+      <ul>
+        <li>ne zahteva registracije ali prijave,</li>
+        <li>ne prikazuje oglasov in ne vsebuje oglaševalskih knjižnic,</li>
+        <li>ne vsebuje analitike, sledilnikov ali poročanja o zrušitvah,</li>
+        <li>ne spremlja lokacije v ozadju in je ne pošilja na strežnik,</li>
+        <li>podatkov ne prodaja in jih ne deli s tretjimi osebami.</li>
+      </ul>
+
+      <h2>Hramba in brisanje</h2>
+      <p>
+        Priljubljene in spremljane ceste odstranite v aplikaciji. Ko aplikacijo odstranite, sistem izbriše vse njene podatke na telefonu.
+        Dovoljenje za lokacijo in obvestila lahko kadar koli prekličete v nastavitvah telefona.
+      </p>
+
+      <h2>Otroci</h2>
+      <p>Aplikacija je namenjena voznikom in ni namenjena otrokom.</p>
+
+      <h2>Vaše pravice</h2>
+      <p>
+        Ker o vas na naših strežnikih ne hranimo osebnih podatkov, vam jih ne moremo posredovati ali izbrisati. Če menite, da kljub temu obdelujemo vaše podatke,
+        nam to sporočite prek <a href={ISSUES_URL}>GitHuba</a>. Pritožbo lahko vložite tudi pri Informacijskem pooblaščencu RS.
+      </p>
+
+      <h2>Spremembe</h2>
+      <p>
+        Ob spremembah aplikacije, ki vplivajo na podatke, posodobimo to stran in datum na vrhu. Zgodovina sprememb je javna v
+        <a href={GITHUB_URL}>repozitoriju na GitHubu</a>.
+      </p>
+    </div>
+  </article>
+</Layout>

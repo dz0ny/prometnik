@@ -1,0 +1,102 @@
+---
+import { Map, Video, Snowflake, BellRing, Wind, ParkingSquare, Plus } from "lucide-react";
+
+const minor = [
+	{ title: "Satelitska karta", body: "Posnetki Esri s cestami in imeni krajev. Po želji OpenStreetMap ali turistična karta Mapy.cz." },
+	{ title: "Priljubljene postaje", body: "Postajo označite z zvezdico in jo najdete na vrhu seznama." },
+	{ title: "Iskanje", body: "Poiščite postajo, kamero ali dogodek po imenu." },
+	{ title: "Temni način", body: "Ponoči ne zaslepi. Sledi nastavitvi telefona." },
+	{ title: "Brez računa", body: "Odprete in uporabljate. Ni prijave, ni oglasov." },
+	{ title: "Sam se posodobi", body: "Različica z GitHuba na Androidu sama ponudi novo izdajo." },
+];
+---
+
+<section id="funkcije" class="py-section scroll-mt-16">
+  <div class="container-page">
+    <div class="grid gap-6 lg:grid-cols-12 lg:items-end" data-reveal>
+      <h2 class="font-display text-4xl font-black leading-tight sm:text-5xl lg:col-span-7">
+        Ena karta za vse, kar se dogaja na cesti.
+      </h2>
+      <p class="text-lg text-muted-foreground lg:col-span-5">
+        Namesto treh spletnih strani in radijskih novic odprete eno aplikacijo. Podatki pridejo iz javnih virov DARS, DRSI in ARSO.
+      </p>
+    </div>
+
+    <div class="mt-12 grid gap-4 md:grid-cols-6">
+      <article class="relative overflow-hidden rounded-xl border border-border bg-card p-7 md:col-span-4 md:row-span-2 md:p-9" data-reveal>
+        <div class="bg-roads pointer-events-none absolute inset-0 opacity-80" aria-hidden="true"></div>
+        <div class="relative">
+          <Map className="size-7 text-sky" aria-hidden="true" />
+          <h3 class="mt-5 text-3xl font-extrabold leading-tight sm:text-4xl">Dogodki na karti</h3>
+          <p class="mt-4 max-w-lg text-muted-foreground">
+            Zapore, zastoji, nesreče in dela na cesti iz prometnih informacij DARS. Prizadeti odsek je narisan na cesti,
+            tapnete ga in preberete, kaj se dogaja in kako dolgo bo trajalo.
+          </p>
+          <ul class="mt-6 grid max-w-lg gap-x-6 gap-y-2 text-[0.95rem] text-foreground sm:grid-cols-2">
+            <li class="border-t border-border pt-2">Filtri po vrsti dogodka</li>
+            <li class="border-t border-border pt-2">Temperature postaj na karti</li>
+            <li class="border-t border-border pt-2">Kamere s sličico v živo</li>
+            <li class="border-t border-border pt-2">Počivališča in burja</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rounded-xl border border-border bg-card p-7 md:col-span-2" data-reveal>
+        <Video className="size-6 text-sky" aria-hidden="true" />
+        <h3 class="mt-4 text-xl font-bold">Okoli 170 kamer</h3>
+        <p class="mt-2 text-[0.97rem] text-muted-foreground">
+          Kamere DARS in vremenskih postaj s sliko v živo. Sliko povečate čez cel zaslon in jo osvežite z enim dotikom.
+        </p>
+      </article>
+
+      <article class="rounded-xl border border-border bg-card p-7 md:col-span-2" data-reveal>
+        <Snowflake className="size-6 text-sky" aria-hidden="true" />
+        <h3 class="mt-4 text-xl font-bold">Stanje cestišča</h3>
+        <p class="mt-2 text-[0.97rem] text-muted-foreground">
+          Cestne postaje DRSI: temperatura cestišča, zmrzišče, rosišče, vodni film in slanost. Ko je cestišče ledeno, aplikacija opozori na poledico.
+        </p>
+      </article>
+
+      <article class="rounded-xl border border-border bg-card p-7 md:col-span-3" data-reveal>
+        <BellRing className="size-6 text-sky" aria-hidden="true" />
+        <h3 class="mt-4 text-xl font-bold">Opozorila za vaše ceste</h3>
+        <p class="mt-2 text-[0.97rem] text-muted-foreground">
+          V zavihku Bližina vidite dogodke okoli sebe. Ceste, ki jih vozite vsak dan, izberete na karti, in ko se na njih kaj zgodi, dobite obvestilo.
+        </p>
+      </article>
+
+      <article class="rounded-xl border border-border bg-card p-7 md:col-span-3" data-reveal>
+        <Wind className="size-6 text-sky" aria-hidden="true" />
+        <h3 class="mt-4 text-xl font-bold">Burja</h3>
+        <p class="mt-2 text-[0.97rem] text-muted-foreground">
+          Sunki vetra na merilnih mestih ob cesti in kaj pomenijo: previdnost pri vleki prikolic ali možne zapore za tovornjake in počitniške prikolice.
+        </p>
+      </article>
+
+      <article class="rounded-xl border border-border bg-card p-7 md:col-span-6 md:flex md:items-center md:gap-10" data-reveal>
+        <div class="flex items-center gap-3 md:w-1/3">
+          <ParkingSquare className="size-6 shrink-0 text-sky" aria-hidden="true" />
+          <h3 class="text-xl font-bold">Počivališča</h3>
+        </div>
+        <p class="mt-2 text-[0.97rem] text-muted-foreground md:mt-0 md:w-2/3">
+          Zasedenost parkirišča, število mest za avtomobile in tovornjake, delovni čas in kaj vas čaka (črpalka, trgovina, WC, tuš). Navigacijo do počivališča odprete z enim dotikom.
+        </p>
+      </article>
+    </div>
+
+    <div class="mt-16 grid gap-8 lg:grid-cols-12" data-reveal>
+      <div class="flex items-start gap-3 lg:col-span-3">
+        <Plus className="mt-1 size-5 shrink-0 text-primary" aria-hidden="true" />
+        <h3 class="text-2xl font-extrabold">In še to</h3>
+      </div>
+      <dl class="grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:col-span-9 lg:grid-cols-3">
+        {minor.map(({ title, body }) => (
+          <div class="border-t border-border pt-4">
+            <dt class="font-bold text-foreground">{title}</dt>
+            <dd class="mt-1 text-[0.95rem] text-muted-foreground">{body}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  </div>
+</section>

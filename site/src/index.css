@@ -1,0 +1,248 @@
+@import 'tailwindcss';
+
+@plugin 'tailwindcss-animate';
+
+/*
+  Prometnik — "Nočna cesta" (night road).
+  One dark theme: cool navy neutrals taken from the app icon (OKLCH hue ~258),
+  sky blue from the app's own primary for data, and one signal-amber highlight
+  (icon / app tertiary, hue ~73, ≈ complementary to the navy) for anything you press.
+  Palette math and contrast checks: see site-specification.md.
+*/
+
+@theme {
+  /* Neutrals: hue 258 at low chroma */
+  --color-background: #08111f;      /* 60% — page */
+  --color-card: #0f1b2d;            /* surface 1 */
+  --color-card-foreground: #eef2f7;
+  --color-popover: #0f1b2d;
+  --color-popover-foreground: #eef2f7;
+  --color-muted: #1a283d;           /* surface 2 */
+  --color-muted-foreground: #a9b6c8;/* 8.4:1 on card — body-safe */
+  --color-faint: #8593a8;           /* 5.5:1 on card — small meta text ok */
+  --color-border: #2a3a52;
+  --color-input: #2a3a52;
+  --color-ring: #ffb547;
+  --color-foreground: #eef2f7;      /* cool off-white, never pure white */
+
+  /* 30% — sky blue (the app's primary): data, icons, the travel-times band */
+  --color-sky: #5da9e9;             /* 6.9:1 on card — text and icons */
+  --color-sky-deep: #1b3a5b;        /* fills only, never text */
+
+  /* 10% — signal amber (CTAs, key numbers, lane marks) */
+  --color-primary: #ffb547;         /* 9.8:1 on card */
+  --color-primary-foreground: #1d1200; /* 10.5:1 on amber */
+  --color-primary-hover: #ffc56e;
+
+  --color-secondary: #1a283d;
+  --color-secondary-foreground: #eef2f7;
+  --color-accent: #1a283d;
+  --color-accent-foreground: #eef2f7;
+  --color-destructive: #e5484d;
+  --color-destructive-foreground: #eef2f7;
+
+  /* Type: one decisive family (Overpass), mono only for readings */
+  --font-display: var(--font-overpass), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-overpass), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-overpass-mono), ui-monospace, monospace;
+
+  /* One radius system: the app's soft sheet corners */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+
+  /* DENSITY 4 */
+  --spacing-section: 6rem;
+  --spacing-section-sm: 4rem;
+
+  --animate-rise: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+  }
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
+}
+
+@utility container-page {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 76rem;
+  padding-inline: 1.25rem;
+  @media (width >= 48rem) {
+    padding-inline: 2rem;
+  }
+}
+
+@utility py-section {
+  padding-block: var(--spacing-section-sm);
+  @media (width >= 48rem) {
+    padding-block: var(--spacing-section);
+  }
+}
+
+/* Road network seen from above at night — the only ornament, behind the hero
+   and the lead bento cell. Thin sky-blue lines, very low opacity. */
+@utility bg-roads {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='720' height='720' viewBox='0 0 720 720' fill='none' stroke='%235da9e9' stroke-opacity='0.13' stroke-linecap='round'%3E%3Cpath stroke-width='2.4' d='M-20 560C120 520 190 430 260 330s150-190 300-220 170-40 180-60'/%3E%3Cpath stroke-width='1.6' d='M-20 180c90 20 170 70 240 150s170 160 300 170 160 60 220 140'/%3E%3Cpath stroke-width='1.2' d='M140 -20c-10 90 20 170 80 240s90 170 60 260-40 160-20 260'/%3E%3Cpath stroke-width='1' d='M420 -20c20 60 60 110 120 140s120 90 100 170-60 120-20 200 40 120 100 150'/%3E%3Cpath stroke-width='0.8' d='M-20 420c60-20 110-10 150 30s100 60 160 40 120-60 200-40 140 80 250 70'/%3E%3C/svg%3E");
+  background-size: 720px 720px;
+}
+
+/* Lane marking: a dashed amber stripe used as a section rule. */
+@utility lane-dash {
+  height: 4px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--color-primary) 0 28px,
+    transparent 28px 52px
+  );
+  border-radius: 2px;
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 1.0625rem;
+    font-weight: 400;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-primary);
+    color: var(--color-primary-foreground);
+  }
+}
+
+/* Long-form legal/support pages */
+@layer components {
+  .prose-cesta {
+    max-width: 44rem;
+    color: var(--color-muted-foreground);
+  }
+  .prose-cesta h2 {
+    margin-top: 2.75rem;
+    margin-bottom: 0.75rem;
+    font-size: 1.6rem;
+    line-height: 1.25;
+    font-weight: 800;
+    color: var(--color-foreground);
+  }
+  .prose-cesta h3 {
+    margin-top: 1.75rem;
+    margin-bottom: 0.5rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--color-foreground);
+  }
+  .prose-cesta p,
+  .prose-cesta ul {
+    margin-bottom: 1rem;
+  }
+  .prose-cesta ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+  }
+  .prose-cesta li {
+    margin-bottom: 0.4rem;
+  }
+  .prose-cesta ul.services {
+    list-style: none;
+    padding-left: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .prose-cesta .services li {
+    margin-bottom: 0;
+  }
+  .prose-cesta li::marker {
+    color: var(--color-sky);
+  }
+  .prose-cesta strong {
+    color: var(--color-foreground);
+    font-weight: 700;
+  }
+  .prose-cesta a {
+    color: var(--color-primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .prose-cesta a:hover {
+    color: var(--color-primary-hover);
+  }
+  .prose-cesta code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    color: var(--color-foreground);
+    background: var(--color-muted);
+    padding: 0.1em 0.35em;
+    border-radius: 0.3rem;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* MOTION 5: one orchestrated hero entrance + scroll reveals; nothing else moves. */
+@media (prefers-reduced-motion: no-preference) {
+  .entrance {
+    animation: var(--animate-rise);
+  }
+  .entrance-1 { animation-delay: 60ms; }
+  .entrance-2 { animation-delay: 160ms; }
+  .entrance-3 { animation-delay: 260ms; }
+  .entrance-4 { animation-delay: 380ms; }
+
+  .js [data-reveal] {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.5s ease-out, transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .js [data-reveal].in {
+    opacity: 1;
+    transform: none;
+  }
+}

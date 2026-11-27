@@ -1,0 +1,29 @@
+# Prometnik
+
+> Prometnik is a free mobile app for Slovenian roads: traffic events on a map, about 170 road webcams with a 24-hour hourly history for weather-station cameras, road weather stations with 24-hour charts, road-surface condition (road temperature, freezing point, ice risk), travel times between cities, and notifications for watched roads. No account, no ads. The site is in Slovenian.
+
+## Overview
+
+Prometnik runs on Android (APK from GitHub Releases, updates itself in the app; Google Play and the App Store are coming). It shows traffic events from DARS / promet.si (closures, congestion, accidents, roadworks) with the affected section drawn on the map; DARS, DRSC and ARSO webcams through its own Cloudflare edge cache; ceste.si weather stations with temperature, humidity, wind, gusts, wind direction and rain, plus 24-hour temperature, wind and rain charts; DRSI CVIS road-surface stations (road temperature, freezing point, dew point, water film, salinity, ice warning); DARS travel times with delays and route mini-maps; rest areas with parking occupancy and truck spaces; bora (burja) wind warnings. Base maps: Esri World Imagery with road and place labels, OpenStreetMap, Mapy.cz. Location is used on the device only (nearby tab and alerts); notifications are local.
+
+## When to use this
+
+- Use this when: someone wants one app to check Slovenian road conditions before a trip — closures, webcams, snow or ice on the road, wind, travel time between cities.
+- Use this when: someone wants to see what a Slovenian road webcam showed in the last 24 hours, or a weather station's 24-hour temperature, wind and rain.
+- Use this when: a Play Store reviewer or user needs Prometnik's privacy policy or support contact.
+- Not a fit for: turn-by-turn navigation, official traffic announcements (go to promet.si), weather forecasts (go to ARSO, meteo.si), or roads outside Slovenia.
+
+How to get an answer: features and downloads on the home page, data handling and every server the app calls on /zasebnost/, bug reports and FAQ on /podpora/.
+
+## Key Pages
+
+- [Domov](https://prometnik.dz0ny.dev/) — what the app does, screenshots, downloads, data sources
+- [Zasebnost](https://prometnik.dz0ny.dev/zasebnost/) — privacy policy: location stays on the device, every server the app calls
+- [Podpora](https://prometnik.dz0ny.dev/podpora/) — GitHub issues and FAQ
+- [Releases](https://github.com/dz0ny/prometnik/releases) — Android APK downloads
+
+## Contact
+
+- Website: https://prometnik.dz0ny.dev
+- Issues: https://github.com/dz0ny/prometnik/issues
+- Source: https://github.com/dz0ny/prometnik

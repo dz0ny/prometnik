@@ -1,0 +1,47 @@
+---
+import { ShieldCheck } from "lucide-react";
+
+const sources = [
+	{ name: "DARS / promet.si", what: "dogodki, kamere, potovalni časi, počivališča, burja" },
+	{ name: "ceste.si", what: "vremenske postaje in njihove kamere" },
+	{ name: "DRSI CVIS", what: "stanje cestišča" },
+	{ name: "ARSO", what: "vremenske kamere" },
+	{ name: "OpenStreetMap", what: "cestno omrežje in karta" },
+	{ name: "Esri World Imagery", what: "satelitska karta" },
+	{ name: "Seznam.cz (Mapy.cz)", what: "turistična karta" },
+];
+---
+
+<section class="pb-section" aria-labelledby="podatki-naslov">
+  <div class="container-page">
+    <div class="grid gap-10 rounded-xl border border-border bg-card p-8 md:grid-cols-12 md:p-12" data-reveal>
+      <div class="md:col-span-5">
+        <ShieldCheck className="size-7 text-sky" aria-hidden="true" />
+        <h2 id="podatki-naslov" class="mt-4 font-display text-3xl font-black leading-tight sm:text-4xl">
+          Javni podatki. Vaša lokacija ostane pri vas.
+        </h2>
+        <p class="mt-4 text-muted-foreground">
+          Lokacijo aplikacija uporabi samo na telefonu, za zavihek Bližina in opozorila. Nima računov, oglasov ali analitike.
+        </p>
+        <p class="mt-5 flex flex-wrap gap-x-6 gap-y-2">
+          <a href="/zasebnost/" class="text-primary underline underline-offset-4 hover:text-primary-hover">Politika zasebnosti</a>
+          <a href="/podpora/" class="text-primary underline underline-offset-4 hover:text-primary-hover">Podpora</a>
+        </p>
+      </div>
+      <div class="md:col-span-7">
+        <h3 class="text-lg font-bold">Viri podatkov</h3>
+        <ul class="mt-3 divide-y divide-border border-y border-border">
+          {sources.map(({ name, what }) => (
+            <li class="flex flex-col gap-0.5 py-3 sm:flex-row sm:justify-between sm:gap-6">
+              <span class="font-semibold text-foreground">{name}</span>
+              <span class="text-[0.95rem] text-muted-foreground sm:text-right">{what}</span>
+            </li>
+          ))}
+        </ul>
+        <p class="mt-4 text-sm text-faint">
+          Podatki so informativne narave. Prometnik ni uradni izdelek DARS, DRSI ali ARSO.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

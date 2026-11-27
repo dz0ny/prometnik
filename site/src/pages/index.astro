@@ -1,0 +1,20 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import Hero from "@/components/Hero.astro";
+import Features from "@/components/Features.astro";
+import HistoryBand from "@/components/HistoryBand.astro";
+import TimesBand from "@/components/TimesBand.astro";
+import DownloadSection from "@/components/DownloadSection.astro";
+import DataNote from "@/components/DataNote.astro";
+import { identitySchema } from "@/lib/schema";
+import { appSchema } from "@/lib/app-schema";
+---
+
+<Layout schema={[...identitySchema(Astro.site), appSchema(Astro.site)]}>
+  <Hero />
+  <Features />
+  <HistoryBand />
+  <TimesBand />
+  <DownloadSection />
+  <DataNote />
+</Layout>

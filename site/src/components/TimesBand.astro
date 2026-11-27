@@ -1,0 +1,49 @@
+---
+import { Picture } from "astro:assets";
+import timesShot from "@/assets/screens/03-casi.webp";
+import { Bell } from "lucide-react";
+
+const steps = [
+	{ n: "38 min", title: "Čas na poti", body: "Trenutni potovalni čas med mesti, osvežen sproti." },
+	{ n: "+7 min", title: "Zamuda", body: "Koliko dlje kot običajno. Mini karta pokaže pot in dogodke na njej." },
+	{ n: null, title: "Obvestilo", body: "Prižgite zvonček in izveste, ko se čas na poti izboljša ali poslabša." },
+];
+---
+
+<section id="casi" class="relative isolate scroll-mt-16 overflow-hidden bg-sky-deep py-section" aria-labelledby="casi-naslov">
+  <div class="bg-roads pointer-events-none absolute inset-0 -z-10 opacity-60" aria-hidden="true"></div>
+  <div class="container-page grid items-center gap-12 lg:grid-cols-12">
+    <div class="lg:col-span-7">
+      <h2 id="casi-naslov" class="font-display text-4xl font-black leading-tight sm:text-5xl" data-reveal>
+        Koliko bo trajala pot? <span class="text-primary">Odgovor je že na telefonu.</span>
+      </h2>
+      <p class="mt-5 max-w-xl text-lg text-foreground/85" data-reveal>
+        Zavihek Časi pokaže potovalne čase na glavnih poteh, kot jih objavlja DARS. Pred odhodom vidite, ali se splača počakati ali izbrati drugo pot.
+      </p>
+      <ol class="mt-10 grid gap-4 sm:grid-cols-3" data-reveal>
+        {steps.map(({ n, title, body }) => (
+          <li class="rounded-lg border border-foreground/15 bg-background/70 p-5">
+            {n ? <span class="font-mono text-lg font-bold text-primary" aria-hidden="true">{n}</span> : <Bell className="size-6 text-primary" aria-hidden="true" />}
+            <p class="mt-2 font-bold text-foreground">{title}</p>
+            <p class="mt-1 text-[0.95rem] text-muted-foreground">{body}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+    <div class="lg:col-span-5" data-reveal>
+      <div class="mx-auto w-[72%] max-w-[19rem] overflow-hidden rounded-[2rem] border-[6px] border-background/60 bg-black shadow-2xl shadow-black/50 lg:w-full">
+        <Picture
+          src={timesShot}
+          formats={["webp"]}
+          fallbackFormat="webp"
+          width={304}
+          widths={[260, 304, 608]}
+          sizes="(min-width: 1024px) 304px, 72vw"
+          alt="Zavihek Časi: LJ–Karavanke 38 minut, LJ–MB 1 h 9 min z zamudo 7 minut, vsaka pot z mini karto in številom dogodkov"
+          loading="lazy"
+          class="block h-auto w-full"
+        />
+      </div>
+    </div>
+  </div>
+</section>
