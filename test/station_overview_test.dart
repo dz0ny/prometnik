@@ -190,7 +190,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('metric-rain')));
     await tester.pump();
-    expect(find.text('Padavine · 24 ur'), findsOneWidget);
+    // 1 → 1,5 → 3,5 → 4 mm through the day: 3 mm fell in the window.
+    expect(find.text('Padavine · 24 ur: 3,0 mm'), findsOneWidget);
     // Daily total 3,5 mm an hour ago and 4 mm now: 0,5 mm since.
     expect(find.textContaining('0,5 mm'), findsOneWidget);
     // The hour before that: 1,5 → 3,5 mm.

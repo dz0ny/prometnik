@@ -529,7 +529,7 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  hasChart ? '${metric.label} · 24 ur' : 'Temperatura danes',
+                  hasChart ? _title(metric, points) : 'Temperatura danes',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontSize: 12,
@@ -630,6 +630,13 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
         ],
       ),
     );
+  }
+
+  /// "Temperatura · 24 ur"; rain adds the total that fell in that time.
+  static String _title(_Metric metric, List<_ChartPoint> points) {
+    if (metric != _Metric.rain) return '${metric.label} · 24 ur';
+    final total = points.fold<double>(0, (sum, p) => sum + (p.rain ?? 0));
+    return '${metric.label} · 24 ur: ${WeatherFormat.rain(total)}';
   }
 
   static Widget _expandIf(bool expand, Widget child) =>
