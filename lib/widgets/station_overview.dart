@@ -138,28 +138,52 @@ class _StationOverviewState extends State<StationOverview> {
   }
 
   List<_Stat> _stats(ColorScheme cs, WeatherReading? w, DrsiStation? road) {
-    String kmh(double? v) => v == null ? '–' : '${v.round()} km/h';
+    String kmh(double v) => '${v.round()} km/h';
     final wind = w?.windSpeedKmh ?? road?.windKmh;
     final gust = w?.windGustKmh ?? road?.gustKmh;
-    final dir = WeatherFormat.windDirection(w?.windDirection);
+    final dirCode = w?.windDirection?.trim();
+    final dir = WeatherFormat.windDirection(dirCode);
     final humidity = w?.humidityPercentage?.toDouble() ?? road?.humidity;
     final dew = w?.dewPointC ?? road?.dewPoint;
+    final air = w?.outdoorTemperatureC ?? road?.airTemp;
     return [
       if (wind != null)
         _Stat(
           Icons.air,
           'Veter',
-          dir.isEmpty ? kmh(wind) : '${kmh(wind)} $dir',
+          kmh(wind),
+          caption: dir.isEmpty ? _windWord(wind) : 'iz smeri $dir',
+          bearing: WeatherFormat.bearing(dirCode),
         ),
-      if (gust != null) _Stat(Icons.storm, 'Sunki', kmh(gust)),
+      if (gust != null)
+        _Stat(Icons.storm, 'Sunki', kmh(gust), caption: _windWord(gust)),
       if (humidity != null && humidity > 0)
-        _Stat(Icons.opacity, 'Vlažnost', '${humidity.round()} %'),
+        _Stat(
+          Icons.opacity,
+          'Vlažnost',
+          '${humidity.round()} %',
+          fraction: (humidity / 100).clamp(0.0, 1.0),
+        ),
       if (w?.dailyRainMm != null)
-        _Stat(Icons.umbrella, 'Padavine', WeatherFormat.rain(w!.dailyRainMm)),
+        _Stat(
+          Icons.umbrella,
+          'Padavine',
+          WeatherFormat.rain(w!.dailyRainMm),
+          caption: 'danes',
+        ),
       if (road != null && road.precipitation.isNotEmpty)
         _Stat(Icons.grain, 'Trenutno', road.precipitation),
       if (dew != null)
-        _Stat(Icons.water_drop, 'Rosišče', WeatherFormat.temp(dew)),
+        _Stat(
+          Icons.water_drop,
+          'Rosišče',
+          WeatherFormat.temp(dew),
+          caption: air == null
+              ? null
+              : air - dew < 2
+              ? 'možna megla'
+              : '${WeatherFormat.decimal(air - dew)}° pod zrakom',
+        ),
       if (w?.pressureHpa != null)
         _Stat(Icons.speed, 'Tlak', WeatherFormat.pressure(w!.pressureHpa)),
       if (road?.freezePoint != null)
@@ -178,6 +202,16 @@ class _StationOverviewState extends State<StationOverview> {
         ),
     ];
   }
+
+  /// Plain-language strength of a wind speed (rough Beaufort bands).
+  static String _windWord(double kmh) => switch (kmh) {
+    < 2 => 'brezvetrje',
+    < 12 => 'šibek',
+    < 29 => 'zmeren',
+    < 50 => 'močan',
+    < 75 => 'zelo močan',
+    _ => 'viharen',
+  };
 }
 
 /// Change of [now] against the reading about an hour earlier in [history]
@@ -323,9 +357,9 @@ class _Trend extends StatelessWidget {
         ? Icons.trending_up
         : Icons.trending_down;
     final label = steady
-        ? 'brez spremembe v zadnji uri'
+        ? 'enako kot pred uro'
         : '${delta > 0 ? '+' : '−'}${WeatherFormat.decimal(delta.abs())}° '
-              'v zadnji uri';
+              'v 1 uri';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -334,8 +368,7 @@ class _Trend extends StatelessWidget {
         Flexible(
           child: Text(
             label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
             style: AppTheme.numberStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
@@ -1256,7 +1289,15 @@ class _HistoryChartPainter extends CustomPainter {
       _Metric.wind => 10.0,
       _Metric.rain => 1.0,
     };
-    if (hi - lo < minSpan) hi = lo + minSpan;
+    if (hi - lo < minSpan) {
+      if (metric == _Metric.temp) {
+        final mid = (hi + lo) / 2;
+        lo = mid - minSpan / 2;
+        hi = mid + minSpan / 2;
+      } else {
+        hi = lo + minSpan;
+      }
+    }
     final step = _niceStep(hi - lo, 3);
     lo = (lo / step).floor() * step;
     hi = math.max((hi / step).ceil() * step, lo + 2 * step);
@@ -1586,15 +1627,27 @@ class _HistoryChartPainter extends CustomPainter {
       old.textScale != textScale;
 }
 
+/// One reading tile: [value] is "number unit" (the unit is drawn smaller)
+/// or plain text; optional [caption], a compass [bearing] (where the wind
+/// comes from) or a 0–1 [fraction] bar.
 class _Stat {
   final IconData icon;
   final String label;
   final String value;
-  const _Stat(this.icon, this.label, this.value);
+  final String? caption;
+  final double? bearing;
+  final double? fraction;
+  const _Stat(
+    this.icon,
+    this.label,
+    this.value, {
+    this.caption,
+    this.bearing,
+    this.fraction,
+  });
 }
 
-/// Dense wrap of compact reading chips — icon, value and a small label —
-/// three per row (two on narrow screens or at large text).
+/// Reading tiles in a two-column grid (one column at very large text).
 class _ReadingChips extends StatelessWidget {
   final List<_Stat> stats;
   const _ReadingChips({required this.stats});
@@ -1604,19 +1657,30 @@ class _ReadingChips extends StatelessWidget {
     if (stats.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, c) {
-        const gap = 6.0;
+        const gap = 8.0;
         final scale = MediaQuery.textScalerOf(context).scale(1);
-        final columns = scale > 1.3 || c.maxWidth < 330 ? 2 : 3;
-        final width = (c.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
+        final columns = scale > 1.6 || c.maxWidth < 260 ? 1 : 2;
+        // Rows of equal-height tiles.
+        return Column(
           children: [
-            for (final s in stats)
-              SizedBox(
-                width: width,
-                child: _ReadingChip(stat: s),
+            for (var i = 0; i < stats.length; i += columns) ...[
+              if (i > 0) const SizedBox(height: gap),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var j = i; j < i + columns; j++) ...[
+                      if (j > i) const SizedBox(width: gap),
+                      Expanded(
+                        child: j < stats.length
+                            ? _ReadingChip(stat: stats[j])
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ],
+                ),
               ),
+            ],
           ],
         );
       },
@@ -1628,48 +1692,107 @@ class _ReadingChip extends StatelessWidget {
   final _Stat stat;
   const _ReadingChip({required this.stat});
 
+  /// "12 km/h" → ("12", " km/h"); text without a leading number → (text, "").
+  static (String, String) _split(String v) {
+    final i = v.indexOf(' ');
+    if (i <= 0) return (v, '');
+    final head = v.substring(0, i);
+    final isNumber =
+        double.tryParse(head.replaceAll(',', '.').replaceAll('−', '-')) != null;
+    return isNumber ? (head, v.substring(i)) : (v, '');
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final (number, unit) = _split(stat.value);
+    final bearing = stat.bearing;
+    final fraction = stat.fraction;
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: .55),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(stat.icon, size: 16, color: cs.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+          Row(
+            children: [
+              Icon(stat.icon, size: 15, color: cs.onSurfaceVariant),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  stat.label,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (bearing != null)
+                Transform.rotate(
+                  // Point where the wind blows to.
+                  angle: (bearing + 180) * math.pi / 180,
+                  child: Icon(Icons.navigation, size: 18, color: cs.onSurface),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text.rich(
+            TextSpan(
               children: [
-                Text(
-                  stat.value,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTheme.numberStyle(
-                    fontSize: 14,
+                TextSpan(text: number),
+                if (unit.isNotEmpty)
+                  TextSpan(
+                    text: unit,
+                    style: AppTheme.numberStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+            style: unit.isEmpty && double.tryParse(number) == null
+                ? TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                    color: cs.onSurface,
+                  )
+                : AppTheme.numberStyle(
+                    fontSize: 24,
                     fontWeight: FontWeight.w800,
                     height: 1.15,
                     color: cs.onSurface,
                   ),
-                ),
-                Text(
-                  stat.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 10.5,
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ),
           ),
+          if (fraction != null) ...[
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: fraction,
+                minHeight: 5,
+                backgroundColor: cs.onSurface.withValues(alpha: .12),
+                color: const Color(0xFF42A5F5),
+              ),
+            ),
+          ],
+          if (stat.caption != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              stat.caption!,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );

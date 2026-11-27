@@ -162,9 +162,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: StationOverview(station: station, historyOverride: history),
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: StationOverview(
+                station: station,
+                historyOverride: history,
+              ),
+            ),
           ),
         ),
       ),
