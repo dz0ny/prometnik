@@ -16,6 +16,9 @@ class WeatherPoint {
   final double? gustKmh;
   final double? rainMm;
 
+  /// Compass code the wind blows from ("ESE"); null in older hours.
+  final String? windDir;
+
   const WeatherPoint({
     required this.at,
     this.tempC,
@@ -23,6 +26,7 @@ class WeatherPoint {
     this.windKmh,
     this.gustKmh,
     this.rainMm,
+    this.windDir,
   });
 }
 
@@ -96,6 +100,9 @@ List<WeatherPoint> parseWeatherHistory(String body) {
         windKmh: n(p['w']),
         gustKmh: n(p['g']),
         rainMm: n(p['r']),
+        windDir: p['d'] is String && (p['d'] as String).trim().isNotEmpty
+            ? (p['d'] as String).trim()
+            : null,
       ),
     );
   }

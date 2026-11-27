@@ -8,13 +8,15 @@ void main() {
   test('parseWeatherHistory reads points oldest first and tolerates junk', () {
     final points = parseWeatherHistory(
       '{"station":2,"points":['
-      '{"at":"2026-11-26T21:00:00Z","t":1.5,"h":90,"w":3,"g":null,"r":6},'
+      '{"at":"2026-11-26T21:00:00Z","t":1.5,"h":90,"w":3,"g":null,"r":6,"d":"ESE"},'
       '{"at":"2026-11-26T20:00:00Z","t":2},'
       '{"at":"nope","t":9}, 7]}',
     );
     expect(points.map((p) => p.tempC), [2.0, 1.5]);
     expect(points.last.humidity, 90);
     expect(points.last.gustKmh, isNull);
+    expect(points.last.windDir, 'ESE');
+    expect(points.first.windDir, isNull);
     expect(points.first.at.isUtc, isFalse);
     expect(parseWeatherHistory('not json'), isEmpty);
     expect(parseWeatherHistory('{"points":3}'), isEmpty);
@@ -134,6 +136,7 @@ void main() {
         'outdoorTemperatureC': 2.0,
         'windSpeedKmh': 8.0,
         'windGustKmh': 30.0,
+        'windDirection': 'NE        ',
         'dailyRainMm': 4.0,
       },
     });
@@ -147,7 +150,14 @@ void main() {
     final history = [
       WeatherPoint(at: h(3), tempC: 1, windKmh: 5, gustKmh: 12, rainMm: 1),
       WeatherPoint(at: h(2), tempC: 1, windKmh: 6, gustKmh: 20, rainMm: 1.5),
-      WeatherPoint(at: h(1), tempC: 2, windKmh: 9, gustKmh: 25, rainMm: 3.5),
+      WeatherPoint(
+        at: h(1),
+        tempC: 2,
+        windKmh: 9,
+        gustKmh: 25,
+        rainMm: 3.5,
+        windDir: 'SW',
+      ),
     ];
     await tester.pumpWidget(
       MaterialApp(
@@ -164,7 +174,19 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('metric-wind')));
     await tester.pump();
     expect(find.text('Veter · 24 ur'), findsOneWidget);
-    expect(find.textContaining('sunki 30 km/h'), findsOneWidget);
+    expect(find.textContaining('SV · sunki 30 km/h'), findsOneWidget);
+
+    // Fullscreen keeps the series and fills the screen.
+    await tester.tap(find.byKey(const ValueKey('chart-fullscreen')));
+    await tester.pumpAndSettle();
+    expect(find.text('Veter · 24 ur'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('wind-chart'))).height,
+      greaterThan(300),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Zapri'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('metric-rain')));
     await tester.pump();

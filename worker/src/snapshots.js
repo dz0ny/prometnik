@@ -80,7 +80,7 @@ const WEATHER_FEED = 'https://www.ceste.si/Vremenske/Vreme/KamereInVreme';
 const WEATHER_KEY = 'w/last24.json';
 const WEATHER_HOURS = 25;
 
-/** Compact readings per station: id → [tempC, humidity%, windKmh, gustKmh, rainMm]. */
+/** Compact readings per station: id → [tempC, humidity%, windKmh, gustKmh, rainMm, windDir]. */
 export function weatherPoints(feed) {
   const out = {};
   if (!Array.isArray(feed)) return out;
@@ -93,6 +93,10 @@ export function weatherPoints(feed) {
       w.windSpeedKmh ?? null,
       w.windGustKmh ?? null,
       w.dailyRainMm ?? null,
+      // Compass code ("ESE"); the feed pads it with spaces.
+      typeof w.windDirection === 'string' && w.windDirection.trim()
+        ? w.windDirection.trim()
+        : null,
     ];
   }
   return out;
@@ -120,6 +124,7 @@ export function stationSeries(doc, id) {
       w: p[2],
       g: p[3],
       r: p[4],
+      d: p[5] ?? null,
     });
   }
   return out;

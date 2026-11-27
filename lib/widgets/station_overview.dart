@@ -120,7 +120,11 @@ class _StationOverviewState extends State<StationOverview> {
         ],
         if (w != null) ...[
           const SizedBox(height: 8),
-          _TemperatureHistoryCard(reading: w, history: _history),
+          _TemperatureHistoryCard(
+            reading: w,
+            history: _history,
+            title: widget.station.name,
+          ),
         ],
         const SizedBox(height: 8),
         _ReadingChips(stats: _stats(cs, w, road)),
@@ -329,6 +333,7 @@ typedef _ChartPoint = ({
   double? w,
   double? g,
   double? rain,
+  String? d,
 });
 
 /// Which series the 24-hour card shows.
@@ -356,6 +361,7 @@ List<_ChartPoint> _chartPoints(WeatherReading r, List<WeatherPoint> history) {
         windKmh: r.windSpeedKmh,
         gustKmh: r.windGustKmh,
         rainMm: r.dailyRainMm,
+        windDir: r.windDirection?.trim(),
       ),
     ),
   ];
@@ -379,6 +385,7 @@ List<_ChartPoint> _chartPoints(WeatherReading r, List<WeatherPoint> history) {
       w: p.windKmh,
       g: p.gustKmh,
       rain: rain,
+      d: p.windDir == null || p.windDir!.isEmpty ? null : p.windDir,
     ));
   }
   return out;
@@ -399,7 +406,20 @@ class _TemperatureHistoryCard extends StatefulWidget {
   final WeatherReading reading;
   final List<WeatherPoint> history;
 
-  const _TemperatureHistoryCard({required this.reading, required this.history});
+  /// Station name for the fullscreen view's title.
+  final String title;
+
+  /// Fills its parent with a tall chart (the fullscreen view).
+  final bool fullscreen;
+  final _Metric? initialMetric;
+
+  const _TemperatureHistoryCard({
+    required this.reading,
+    required this.history,
+    this.title = '',
+    this.fullscreen = false,
+    this.initialMetric,
+  });
 
   @override
   State<_TemperatureHistoryCard> createState() =>
@@ -408,7 +428,21 @@ class _TemperatureHistoryCard extends StatefulWidget {
 
 class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
   int? _selected;
-  _Metric _metric = _Metric.temp;
+  late _Metric _metric = widget.initialMetric ?? _Metric.temp;
+
+  void _openFullscreen(_Metric metric) {
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _HistoryFullscreen(
+          title: widget.title,
+          reading: widget.reading,
+          history: widget.history,
+          metric: metric,
+        ),
+      ),
+    );
+  }
 
   /// Nearest point to horizontal position [dx] inside a chart [width] wide.
   void _selectAt(double dx, double width, List<_ChartPoint> points) {
@@ -465,12 +499,14 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: .55),
+        color: widget.fullscreen
+            ? null
+            : cs.surfaceContainerHighest.withValues(alpha: .55),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: widget.fullscreen ? MainAxisSize.max : MainAxisSize.min,
         children: [
           if (available.length > 1) ...[
             _MetricSwitch(
@@ -509,75 +545,95 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
                   points[sel ?? points.length - 1],
                   sel,
                 ),
+              if (hasChart && !widget.fullscreen)
+                SizedBox(
+                  width: 32,
+                  height: 24,
+                  child: IconButton(
+                    key: const ValueKey('chart-fullscreen'),
+                    tooltip: 'Celoten zaslon',
+                    padding: EdgeInsets.zero,
+                    iconSize: 18,
+                    color: cs.onSurfaceVariant,
+                    icon: const Icon(Icons.open_in_full),
+                    onPressed: () => _openFullscreen(metric),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
           // Fade between series; only the plot changes, the title and the
           // readout above update in place.
-          AnimatedSwitcher(
-            duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            layoutBuilder: (current, previous) => Stack(
-              alignment: Alignment.topLeft,
-              children: [
-                for (final p in previous) IgnorePointer(child: p),
-                ?current,
-              ],
-            ),
-            child: KeyedSubtree(
-              key: ValueKey(hasChart ? 'plot-${metric.name}' : 'plot-range'),
-              child: hasChart
-                  ? LayoutBuilder(
-                      builder: (context, c) => GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapDown: (d) =>
-                            _selectAt(d.localPosition.dx, c.maxWidth, points),
-                        onHorizontalDragStart: (d) =>
-                            _selectAt(d.localPosition.dx, c.maxWidth, points),
-                        onHorizontalDragUpdate: (d) =>
-                            _selectAt(d.localPosition.dx, c.maxWidth, points),
-                        child: SizedBox(
-                          key: ValueKey('${metric.name}-chart'),
-                          height: 96,
-                          width: c.maxWidth,
-                          child: CustomPaint(
-                            painter: _HistoryChartPainter(
-                              metric: metric,
-                              points: points,
-                              selected: sel,
-                              line: color,
-                              grid: cs.outlineVariant,
-                              label: cs.onSurfaceVariant,
-                              marker: cs.onSurface,
+          _expandIf(
+            widget.fullscreen,
+            AnimatedSwitcher(
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              layoutBuilder: (current, previous) => Stack(
+                alignment: Alignment.topLeft,
+                children: [
+                  for (final p in previous) IgnorePointer(child: p),
+                  ?current,
+                ],
+              ),
+              child: KeyedSubtree(
+                key: ValueKey(hasChart ? 'plot-${metric.name}' : 'plot-range'),
+                child: hasChart
+                    ? LayoutBuilder(
+                        builder: (context, c) => GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (d) =>
+                              _selectAt(d.localPosition.dx, c.maxWidth, points),
+                          onHorizontalDragStart: (d) =>
+                              _selectAt(d.localPosition.dx, c.maxWidth, points),
+                          onHorizontalDragUpdate: (d) =>
+                              _selectAt(d.localPosition.dx, c.maxWidth, points),
+                          child: SizedBox(
+                            key: ValueKey('${metric.name}-chart'),
+                            height: widget.fullscreen ? c.maxHeight : 96,
+                            width: c.maxWidth,
+                            child: CustomPaint(
+                              painter: _HistoryChartPainter(
+                                metric: metric,
+                                points: points,
+                                selected: sel,
+                                line: color,
+                                grid: cs.outlineVariant,
+                                label: cs.onSurfaceVariant,
+                                marker: cs.onSurface,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _RangeBar(lo: lo!, hi: hi!, now: now!),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Graf zadnjih 24 ur se še zbira.',
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 11,
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _RangeBar(lo: lo!, hi: hi!, now: now!),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Graf zadnjih 24 ur se še zbira.',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
+  static Widget _expandIf(bool expand, Widget child) =>
+      expand ? Expanded(child: child) : child;
 
   /// The selected hour's values, e.g. "22:00  0,4 °C  95 % · 4 km/h", or
   /// "zdaj  …" for the current reading.
@@ -602,7 +658,10 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
       ),
       _Metric.wind => (
         p.w == null ? '–' : kmh(p.w!),
-        [if (p.g != null) 'sunki ${kmh(p.g!)}'],
+        [
+          if (p.d != null) WeatherFormat.windDirection(p.d),
+          if (p.g != null) 'sunki ${kmh(p.g!)}',
+        ],
       ),
       _Metric.rain => (WeatherFormat.rain(p.rain), const <String>[]),
     };
@@ -815,9 +874,10 @@ class _HistoryChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     const bottomPad = 14.0;
+    final arrows = metric == _Metric.wind && points.any((p) => p.d != null);
     final chart = Rect.fromLTRB(
       leftPad,
-      4,
+      arrows ? 20 : 4,
       size.width,
       size.height - bottomPad,
     );
@@ -901,6 +961,7 @@ class _HistoryChartPainter extends CustomPainter {
     } else {
       if (metric == _Metric.wind) _paintGusts(canvas, x, y);
       _paintLine(canvas, chart, x, y);
+      if (arrows) _paintDirections(canvas, chart, x);
     }
 
     final sel = selected;
@@ -1010,6 +1071,42 @@ class _HistoryChartPainter extends CustomPainter {
         3.5,
         Paint()..color = line,
       );
+    }
+  }
+
+  /// Wind direction as small arrows along the top, pointing where the wind
+  /// blows to; thinned out so they never crowd.
+  void _paintDirections(
+    Canvas canvas,
+    Rect chart,
+    double Function(DateTime) x,
+  ) {
+    final paint = Paint()
+      ..color = marker.withValues(alpha: .75)
+      ..style = PaintingStyle.fill;
+    const cy = 10.0;
+    double? lastX;
+    for (var i = points.length - 1; i >= 0; i--) {
+      final from = WeatherFormat.bearing(points[i].d);
+      if (from == null) continue;
+      final px = x(points[i].at);
+      if (lastX != null && lastX - px < 16) continue;
+      lastX = px;
+      // Bearing is where the wind comes from; screen angle 0 = up.
+      final a = (from + 180) * math.pi / 180;
+      canvas
+        ..save()
+        ..translate(px, cy)
+        ..rotate(a);
+      final path = Path()
+        ..moveTo(0, -6)
+        ..lineTo(4, 4)
+        ..lineTo(0, 2)
+        ..lineTo(-4, 4)
+        ..close();
+      canvas
+        ..drawPath(path, paint)
+        ..restore();
     }
   }
 
@@ -1179,6 +1276,48 @@ class _ReadingChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The 24-hour chart filling the screen (also in landscape), opened from the
+/// card's expand button.
+class _HistoryFullscreen extends StatelessWidget {
+  final String title;
+  final WeatherReading reading;
+  final List<WeatherPoint> history;
+  final _Metric metric;
+
+  const _HistoryFullscreen({
+    required this.title,
+    required this.reading,
+    required this.history,
+    required this.metric,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title.isEmpty ? 'Zadnjih 24 ur' : title),
+        leading: IconButton(
+          tooltip: 'Zapri',
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 16, 12),
+          child: _TemperatureHistoryCard(
+            reading: reading,
+            history: history,
+            title: title,
+            fullscreen: true,
+            initialMetric: metric,
+          ),
+        ),
       ),
     );
   }
