@@ -81,7 +81,7 @@ clean: ## Clean build artifacts
 
 release: release-android ## Bump+push and publish a GitHub release (CI builds all assets)
 
-release-android: bump ## Bump+push and create GitHub release (CI builds & uploads APK, AAB, macOS, web)
+release-android: bump ## Bump+push and create GitHub release (CI builds & uploads APK and AAB)
 	$(eval VERSION := $(shell grep '^version:' $(PUBSPEC) | sed 's/version: //' | cut -d'+' -f1))
 	@command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not found — https://cli.github.com"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "Error: not logged in to gh — run 'gh auth login'"; exit 1; }
@@ -94,6 +94,6 @@ release-android: bump ## Bump+push and create GitHub release (CI builds & upload
 		--title "Prometnik v$(VERSION)" \
 		--notes "Release $(VERSION)" \
 		--latest
-	@echo "Release v$(VERSION) created - CI is building APK, AAB, macOS and web."
+	@echo "Release v$(VERSION) created - CI is building the APK and AAB."
 	@echo "Release: https://github.com/dz0ny/prometnik/releases/tag/v$(VERSION)"
 	@echo "Actions: https://github.com/dz0ny/prometnik/actions"

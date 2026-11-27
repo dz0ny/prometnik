@@ -84,99 +84,12 @@ jobs:
             ${{ env.APP_NAME }}-*-play.aab
           if-no-files-found: error
 
-  build-macos:
-    name: Build macOS App
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-          pub-cache: true
-          cache-key: flutter-${{ runner.os }}-stable-${{ runner.arch }}
-          pub-cache-key: flutter-pub-${{ runner.os }}-stable-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
-
-      - name: Enable macOS desktop
-        run: flutter config --enable-macos-desktop
-
-      - name: Install Flutter dependencies
-        run: flutter pub get
-
-      - name: Build macOS release
-        run: flutter build macos --release
-
-      - name: Create macOS DMG
-        run: |
-          RAW_TAG="${{ github.event.release.tag_name || github.ref_name }}"
-          TAG="${RAW_TAG//\//-}"
-          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" -print -quit)
-          if [ -z "$APP_PATH" ]; then
-            echo "No .app bundle found in build output."
-            exit 1
-          fi
-          hdiutil create -volname "Prometnik" -srcfolder "$APP_PATH" -ov -format UDZO "${APP_NAME}-${TAG}-macos.dmg"
-          ls -lah "${APP_NAME}-${TAG}-macos.dmg"
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-macos
-          path: ${{ env.APP_NAME }}-*-macos.dmg
-          if-no-files-found: error
-
-  build-web:
-    name: Build Web App
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-          pub-cache: true
-          cache-key: flutter-${{ runner.os }}-stable-${{ runner.arch }}
-          pub-cache-key: flutter-pub-${{ runner.os }}-stable-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
-
-      - name: Enable web
-        run: flutter config --enable-web
-
-      - name: Install Flutter dependencies
-        run: flutter pub get
-
-      - name: Build web release
-        run: flutter build web --wasm --release
-
-      - name: Package web artifact
-        run: |
-          RAW_TAG="${{ github.event.release.tag_name || github.ref_name }}"
-          TAG="${RAW_TAG//\//-}"
-          (cd build/web && zip -qry "../../${APP_NAME}-${TAG}-web.zip" .)
-          ls -lah "${APP_NAME}-${TAG}-web.zip"
-
-      - name: Upload web artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-web
-          path: ${{ env.APP_NAME }}-*-web.zip
-          if-no-files-found: error
-
   upload-release-assets:
     name: Upload Assets To Release
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     needs:
       - build-android
-      - build-macos
-      - build-web
 
     steps:
       - name: Download all build artifacts
@@ -194,11 +107,7 @@ jobs:
             Release assets are published for supported build targets:
             - Android installable APK (`.apk`)
             - Google Play App Bundle (`.aab`)
-            - macOS disk image (`.dmg`)
-            - Web app bundle (`-web.zip`)
           files: |
             dist/*.apk
             dist/*.aab
-            dist/*.dmg
-            dist/*.zip
           fail_on_unmatched_files: true
