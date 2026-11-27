@@ -23,6 +23,18 @@ android {
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
+    // direct: the APK from GitHub Releases, updates itself in-app.
+    // play: the Play Store bundle, without the install-packages permission.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("direct") {
+            dimension = "distribution"
+        }
+        create("play") {
+            dimension = "distribution"
+        }
+    }
+
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17

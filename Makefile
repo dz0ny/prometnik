@@ -5,7 +5,7 @@
 APP_NAME := prometnik
 PUBSPEC := pubspec.yaml
 BUILD_DIR := build/app/outputs/flutter-apk
-BUNDLE_DIR := build/app/outputs/bundle/release
+BUNDLE_DIR := build/app/outputs/bundle/playRelease
 
 YEAR := $(shell date +%Y)
 MMDD := $(shell date +%m%d)
@@ -61,20 +61,20 @@ icon: ## Generate app icons from icon.png
 	dart run flutter_launcher_icons
 
 build: bump ## Build release APK (auto-bumps version)
-	flutter build apk --release
-	@ls -lh $(BUILD_DIR)/app-release.apk
+	flutter build apk --release --flavor direct
+	@ls -lh $(BUILD_DIR)/app-direct-release.apk
 
 build-no-bump: ## Build release APK without bumping version
-	flutter build apk --release
-	@ls -lh $(BUILD_DIR)/app-release.apk
+	flutter build apk --release --flavor direct
+	@ls -lh $(BUILD_DIR)/app-direct-release.apk
 
 bundle: bump ## Build release App Bundle (auto-bumps version)
-	flutter build appbundle --release --dart-define=PROMET_PLAY_DISTRIBUTION=true
-	@ls -lh $(BUNDLE_DIR)/app-release.aab
+	flutter build appbundle --release --flavor play --dart-define=PROMET_PLAY_DISTRIBUTION=true
+	@ls -lh $(BUNDLE_DIR)/app-play-release.aab
 
 bundle-no-bump: ## Build release App Bundle without bumping version
-	flutter build appbundle --release --dart-define=PROMET_PLAY_DISTRIBUTION=true
-	@ls -lh $(BUNDLE_DIR)/app-release.aab
+	flutter build appbundle --release --flavor play --dart-define=PROMET_PLAY_DISTRIBUTION=true
+	@ls -lh $(BUNDLE_DIR)/app-play-release.aab
 
 clean: ## Clean build artifacts
 	flutter clean
