@@ -31,6 +31,31 @@ class WeatherFormat {
     return d.split('').map((c) => letters[c] ?? c).join();
   }
 
+  /// Where the wind comes from, in words: "ESE" → "iz vzhoda-jugovzhoda".
+  /// Empty for an unknown code.
+  static String windFrom(String? dir) {
+    const words = {
+      'N': 'severa',
+      'NNE': 'severa-severovzhoda',
+      'NE': 'severovzhoda',
+      'ENE': 'vzhoda-severovzhoda',
+      'E': 'vzhoda',
+      'ESE': 'vzhoda-jugovzhoda',
+      'SE': 'jugovzhoda',
+      'SSE': 'juga-jugovzhoda',
+      'S': 'juga',
+      'SSW': 'juga-jugozahoda',
+      'SW': 'jugozahoda',
+      'WSW': 'zahoda-jugozahoda',
+      'W': 'zahoda',
+      'WNW': 'zahoda-severozahoda',
+      'NW': 'severozahoda',
+      'NNW': 'severa-severozahoda',
+    };
+    final w = words[dir?.trim().toUpperCase()];
+    return w == null ? '' : 'iz $w';
+  }
+
   static String wind(WeatherReading w) {
     if (w.windSpeedKmh == null) return '–';
     final dir = (w.windDirection?.isNotEmpty ?? false)

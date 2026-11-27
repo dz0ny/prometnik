@@ -179,7 +179,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('metric-wind')));
     await tester.pump();
     expect(find.text('Veter · 24 ur'), findsOneWidget);
-    expect(find.textContaining('SV · sunki 30 km/h'), findsOneWidget);
+    expect(
+      find.textContaining('iz severovzhoda · sunki 30 km/h'),
+      findsOneWidget,
+    );
 
     // Fullscreen keeps the series and fills the screen.
     await tester.tap(find.byKey(const ValueKey('chart-fullscreen')));

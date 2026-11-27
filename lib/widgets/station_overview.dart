@@ -142,7 +142,7 @@ class _StationOverviewState extends State<StationOverview> {
     final wind = w?.windSpeedKmh ?? road?.windKmh;
     final gust = w?.windGustKmh ?? road?.gustKmh;
     final dirCode = w?.windDirection?.trim();
-    final dir = WeatherFormat.windDirection(dirCode);
+    final dir = WeatherFormat.windFrom(dirCode);
     final humidity = w?.humidityPercentage?.toDouble() ?? road?.humidity;
     final dew = w?.dewPointC ?? road?.dewPoint;
     final air = w?.outdoorTemperatureC ?? road?.airTemp;
@@ -152,7 +152,7 @@ class _StationOverviewState extends State<StationOverview> {
           Icons.air,
           'Veter',
           kmh(wind),
-          caption: dir.isEmpty ? _windWord(wind) : 'iz smeri $dir',
+          caption: dir.isEmpty ? _windWord(wind) : dir,
           bearing: WeatherFormat.bearing(dirCode),
         ),
       if (gust != null)
@@ -973,7 +973,7 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
       _Metric.wind => (
         p.w == null ? '–' : kmh(p.w!),
         [
-          if (p.d != null) WeatherFormat.windDirection(p.d),
+          if (p.d != null) WeatherFormat.windFrom(p.d),
           if (p.g != null) 'sunki ${kmh(p.g!)}',
         ],
       ),

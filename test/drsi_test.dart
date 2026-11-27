@@ -178,6 +178,8 @@ void main() {
     expect(WeatherFormat.windDirection('S'), 'J');
     expect(WeatherFormat.windDirection('N'), 'S');
     expect(WeatherFormat.bearing('N'), 0);
+    expect(WeatherFormat.windFrom('ESE       '), 'iz vzhoda-jugovzhoda');
+    expect(WeatherFormat.windFrom('?'), '');
   });
 
   test('eventRoadLabel hides internal ids', () {
