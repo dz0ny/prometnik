@@ -324,14 +324,11 @@ async function captureSliceInner(env, now, fetchFrame) {
   const fetchOne = async (job) => {
     try {
       if (!(await env.SNAPS.head(job.key))) {
-        const res = await fetchFrame(new URL(job.cam), CRON_FETCH_TIMEOUT_MS);
-        const wrote = await storeHourly(
-          env,
-          job.cam,
-          await res.arrayBuffer(),
-          res.headers.get('Content-Type'),
-          now,
+        const { body, type } = await fetchFrame(
+          new URL(job.cam),
+          CRON_FETCH_TIMEOUT_MS,
         );
+        const wrote = await storeHourly(env, job.cam, body, type, now);
         if (wrote) stored++;
       }
       done.add(job.id);

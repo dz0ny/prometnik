@@ -105,3 +105,14 @@ test('weather history keeps one entry per hour and the newest 25', () => {
   assert.equal(series.at(-1).at, '2026-11-27T05:00:00Z');
   assert.deepEqual(stationSeries(doc, '999'), []);
 });
+
+test('isCompleteImage rejects half-written JPEGs', async () => {
+  const { isCompleteImage } = await import('../src/index.js');
+  const whole = new Uint8Array([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]).buffer;
+  const padded = new Uint8Array([0xff, 0xd8, 1, 0xff, 0xd9, 0, 0]).buffer;
+  const cut = new Uint8Array([0xff, 0xd8, 1, 2, 3, 4, 5]).buffer;
+  assert.equal(isCompleteImage(whole, 'image/jpeg'), true);
+  assert.equal(isCompleteImage(padded, 'image/jpeg'), true);
+  assert.equal(isCompleteImage(cut, 'image/jpeg'), false);
+  assert.equal(isCompleteImage(cut, 'image/png'), true);
+});

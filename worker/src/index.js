@@ -78,16 +78,42 @@ function withHeaders(res, maxAge, state) {
   return out;
 }
 
-export async function fetchFrame(cam, timeoutMs = ORIGIN_TIMEOUT_MS) {
-  const res = await fetch(cam.toString(), {
-    headers: { 'User-Agent': 'prometnik-cams/1.0 (+https://github.com/dz0ny/prometnik)' },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const type = res.headers.get('Content-Type') || '';
-  if (!res.ok || !type.startsWith('image/')) {
-    throw new Error(`camera answered ${res.status} ${type}`);
+/**
+ * Whether [buf] is a whole image. Camera hosts sometimes serve the JPEG
+ * while the camera is still writing it: the file then stops early (no
+ * end-of-image marker) and decodes with a grey bottom, or not at all.
+ */
+export function isCompleteImage(buf, type) {
+  const b = new Uint8Array(buf);
+  if (b.length < 4) return false;
+  if (!/jpe?g/i.test(type)) return true;
+  if (b[0] !== 0xff || b[1] !== 0xd8) return false;
+  // The EOI marker may be followed by a little padding.
+  for (let i = b.length - 2; i >= Math.max(0, b.length - 64); i--) {
+    if (b[i] === 0xff && b[i + 1] === 0xd9) return true;
   }
-  return res;
+  return false;
+}
+
+/**
+ * Fetches one whole frame of [cam]: { body, type }. A half-written frame is
+ * fetched again (up to [tries] times) after a short pause.
+ */
+export async function fetchFrame(cam, timeoutMs = ORIGIN_TIMEOUT_MS, tries = 3) {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(cam.toString(), {
+      headers: { 'User-Agent': 'prometnik-cams/1.0 (+https://github.com/dz0ny/prometnik)' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const type = res.headers.get('Content-Type') || '';
+    if (!res.ok || !type.startsWith('image/')) {
+      throw new Error(`camera answered ${res.status} ${type}`);
+    }
+    const body = await res.arrayBuffer();
+    if (isCompleteImage(body, type)) return { body, type };
+    if (attempt >= tries) throw new Error('camera sent an incomplete image');
+    await new Promise((r) => setTimeout(r, 700));
+  }
 }
 
 export default {
@@ -188,9 +214,7 @@ async function serveCamera(cam, env, ctx) {
 
 /** Fetch the camera, update both edge copies and this hour's R2 snapshot. */
 async function refreshFrame(cam, env, keys) {
-  const origin = await fetchFrame(cam);
-  const body = await origin.arrayBuffer();
-  const type = origin.headers.get('Content-Type') || 'image/jpeg';
+  const { body, type } = await fetchFrame(cam);
   // When the frame was fetched, so clients can tell a stale copy's real age.
   const at = new Date().toISOString();
   const store = (maxAge) =>
