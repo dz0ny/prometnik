@@ -203,4 +203,15 @@ void main() {
     expect(find.textContaining('2,0 mm'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  test('hourly trend compares with the reading about an hour ago', () {
+    final at = DateTime(2026, 11, 27, 20, 10);
+    final history = [
+      WeatherPoint(at: DateTime(2026, 11, 27, 17), tempC: -5),
+      WeatherPoint(at: DateTime(2026, 11, 27, 19), tempC: 1.0),
+      WeatherPoint(at: DateTime(2026, 11, 27, 20), tempC: 9),
+    ];
+    expect(hourlyTrend(1.6, history, at), closeTo(0.6, 1e-9));
+    expect(hourlyTrend(1.6, [history.first, history.last], at), isNull);
+  });
 }

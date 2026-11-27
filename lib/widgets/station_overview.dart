@@ -81,39 +81,30 @@ class _StationOverviewState extends State<StationOverview> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Air | road.
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (w != null)
-                Expanded(
-                  child: _HeadlineTile(
-                    icon: Icons.thermostat,
-                    label: 'Zrak',
-                    value: WeatherFormat.temp(w.outdoorTemperatureC),
-                    temp: w.outdoorTemperatureC,
-                    color: AppTheme.temperatureColor(w.outdoorTemperatureC),
-                    detail: _minMax(w),
-                  ),
-                ),
-              if (w != null && road != null) const SizedBox(width: 8),
-              if (road != null)
-                Expanded(
-                  child: _HeadlineTile(
-                    icon: risk == RoadRisk.ok ? Icons.add_road : Icons.ac_unit,
-                    label: 'Cestišče',
-                    value: WeatherFormat.temp(road.roadTemp),
-                    temp: road.roadTemp,
-                    color: drsiRiskColor(risk!),
-                    detail: road.roadState.isEmpty
-                        ? drsiRiskLabel(risk)
-                        : road.roadState,
-                  ),
-                ),
-            ],
+        // Current air conditions, then the road surface.
+        if (w != null && w.outdoorTemperatureC != null)
+          _AirCard(reading: w, history: _history)
+        else if (w != null)
+          _HeadlineTile(
+            icon: Icons.thermostat,
+            label: 'Zrak',
+            value: WeatherFormat.temp(w.outdoorTemperatureC),
+            temp: w.outdoorTemperatureC,
+            color: AppTheme.temperatureColor(w.outdoorTemperatureC),
+            detail: _minMax(w),
           ),
-        ),
+        if (w != null && road != null) const SizedBox(height: 8),
+        if (road != null)
+          _HeadlineTile(
+            icon: risk == RoadRisk.ok ? Icons.add_road : Icons.ac_unit,
+            label: 'Cestišče',
+            value: WeatherFormat.temp(road.roadTemp),
+            temp: road.roadTemp,
+            color: drsiRiskColor(risk!),
+            detail: road.roadState.isEmpty
+                ? drsiRiskLabel(risk)
+                : road.roadState,
+          ),
         if (road != null && risk != RoadRisk.ok) ...[
           const SizedBox(height: 8),
           _RiskBanner(risk: risk!, alarms: road.alarms),
@@ -186,6 +177,288 @@ class _StationOverviewState extends State<StationOverview> {
           '${road!.salinity!.round()} ${road.salinityUnit}'.trim(),
         ),
     ];
+  }
+}
+
+/// Change of [now] against the reading about an hour earlier in [history]
+/// (40 minutes to 2 hours back); null without such a reading.
+@visibleForTesting
+double? hourlyTrend(double now, List<WeatherPoint> history, DateTime at) {
+  WeatherPoint? best;
+  for (final p in history) {
+    final age = at.difference(p.at);
+    if (p.tempC == null ||
+        age < const Duration(minutes: 40) ||
+        age > const Duration(hours: 2)) {
+      continue;
+    }
+    if (best == null ||
+        (age - const Duration(hours: 1)).abs() <
+            (at.difference(best.at) - const Duration(hours: 1)).abs()) {
+      best = p;
+    }
+  }
+  return best == null ? null : now - best.tempC!;
+}
+
+/// The current air reading: a large temperature tinted by its value with the
+/// change over the last hour, and today's range as a bar with the current
+/// value marked.
+class _AirCard extends StatelessWidget {
+  final WeatherReading reading;
+  final List<WeatherPoint> history;
+
+  const _AirCard({required this.reading, required this.history});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
+    final t = reading.outdoorTemperatureC!;
+    final tint = AppTheme.temperatureColor(t);
+    final text = AppTheme.temperatureTextColor(t, brightness);
+    final trend = hourlyTrend(t, history, DateTime.now());
+    final lo = reading.minOutdoorTemperatureC;
+    final hi = reading.maxOutdoorTemperatureC;
+    final number = WeatherFormat.decimal(t);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: cs.surfaceContainerHighest.withValues(alpha: .55),
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            tint.withValues(alpha: .22),
+            cs.surfaceContainerHighest.withValues(alpha: .55),
+          ],
+        ),
+        border: Border.all(color: tint.withValues(alpha: .35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            flex: 11,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.thermostat, size: 15, color: text),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        'Zrak',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: number),
+                        TextSpan(
+                          text: ' °C',
+                          style: AppTheme.numberStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: text,
+                          ),
+                        ),
+                      ],
+                    ),
+                    key: const ValueKey('air-now'),
+                    style: AppTheme.numberStyle(
+                      fontSize: 46,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                      color: text,
+                    ),
+                  ),
+                ),
+                if (trend != null) _Trend(delta: trend),
+              ],
+            ),
+          ),
+          if (lo != null && hi != null) ...[
+            const SizedBox(width: 14),
+            Expanded(
+              flex: 9,
+              child: _TodayRange(lo: lo, hi: hi, now: t),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "↑ 0,8° v zadnji uri" — steady within ±0,2°.
+class _Trend extends StatelessWidget {
+  final double delta;
+
+  const _Trend({required this.delta});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final steady = delta.abs() < 0.25;
+    final icon = steady
+        ? Icons.trending_flat
+        : delta > 0
+        ? Icons.trending_up
+        : Icons.trending_down;
+    final label = steady
+        ? 'brez spremembe v zadnji uri'
+        : '${delta > 0 ? '+' : '−'}${WeatherFormat.decimal(delta.abs())}° '
+              'v zadnji uri';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: cs.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.numberStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Today's minimum and maximum with a gradient bar and the current value.
+class _TodayRange extends StatelessWidget {
+  final double lo;
+  final double hi;
+  final double now;
+
+  const _TodayRange({required this.lo, required this.hi, required this.now});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
+    final span = math.max(hi - lo, 0.1);
+    final pos = ((now - lo) / span).clamp(0.0, 1.0);
+    Widget end(String caption, double v, CrossAxisAlignment align) => Column(
+      crossAxisAlignment: align,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          caption,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        Text(
+          WeatherFormat.degrees(v),
+          style: AppTheme.numberStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: AppTheme.temperatureTextColor(v, brightness),
+          ),
+        ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Danes',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, c) => SizedBox(
+            height: 16,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.centerLeft,
+              children: [
+                Container(
+                  height: 8,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    gradient: LinearGradient(
+                      colors: [
+                        AppTheme.temperatureColor(lo),
+                        AppTheme.temperatureColor(hi),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: (c.maxWidth - 16) * pos,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: cs.onSurface,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: cs.surface, width: 3),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: end('najnižja', lo, CrossAxisAlignment.start),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: end('najvišja', hi, CrossAxisAlignment.end),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }
 
