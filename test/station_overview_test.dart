@@ -5,6 +5,33 @@ import 'package:promet/services/weather_history_service.dart';
 import 'package:promet/widgets/station_overview.dart';
 
 void main() {
+  group('weatherPointAt', () {
+    final h = [
+      WeatherPoint(at: DateTime(2026, 11, 27, 11), tempC: 1.5),
+      WeatherPoint(at: DateTime(2026, 11, 27, 12), tempC: 2.4),
+      WeatherPoint(at: DateTime(2026, 11, 27, 13), tempC: 3.1),
+    ];
+
+    test('picks the reading of the snapshot hour', () {
+      expect(weatherPointAt(h, DateTime(2026, 11, 27, 12))?.tempC, 2.4);
+      expect(weatherPointAt(h, DateTime(2026, 11, 27, 12, 20))?.tempC, 2.4);
+    });
+
+    test('readingForSnapshot: live, that hour, or nothing', () {
+      const live = WeatherReading(outdoorTemperatureC: 0.1, pressureHpa: 1024);
+      expect(readingForSnapshot(live, h, null), same(live));
+      final noon = readingForSnapshot(live, h, DateTime(2026, 11, 27, 12));
+      expect(noon?.outdoorTemperatureC, 2.4);
+      expect(noon?.pressureHpa, isNull);
+      expect(readingForSnapshot(live, h, DateTime(2026, 11, 27, 18)), isNull);
+    });
+
+    test('nothing when no reading is near', () {
+      expect(weatherPointAt(h, DateTime(2026, 11, 27, 18)), isNull);
+      expect(weatherPointAt(const [], DateTime(2026, 11, 27, 12)), isNull);
+    });
+  });
+
   test('parseWeatherHistory reads points oldest first and tolerates junk', () {
     final points = parseWeatherHistory(
       '{"station":2,"points":['

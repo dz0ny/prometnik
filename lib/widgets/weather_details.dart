@@ -85,6 +85,9 @@ class WeatherFormat {
   /// The app-wide date/time format, "26. 11. 2026, 20:56".
   static final dateTimeFormat = DateFormat('d. M. yyyy, HH:mm');
 
+  /// Hour of a camera snapshot, "12.00".
+  static String hour(DateTime t) => DateFormat('HH.mm').format(t);
+
   static String timestamp(DateTime? ts) {
     if (ts == null) return 'ni podatka';
     return dateTimeFormat.format(ts);
@@ -138,27 +141,31 @@ class WeatherDetailsView extends StatelessWidget {
           builder: (context, constraints) {
             const gap = 12.0;
             final tileWidth = (constraints.maxWidth - gap) / 2;
+            // A stored hour has no pressure or dew point: drop those tiles
+            // instead of showing dashes.
             final tiles = <Widget>[
               _StatTile(
                 icon: Icons.water_drop_outlined,
                 label: 'Vlažnost',
                 value: WeatherFormat.humidity(weather.humidityPercentage),
               ),
-              _StatTile(
-                icon: Icons.compress,
-                label: 'Tlak',
-                value: WeatherFormat.pressure(weather.pressureHpa),
-              ),
+              if (weather.pressureHpa != null)
+                _StatTile(
+                  icon: Icons.compress,
+                  label: 'Tlak',
+                  value: WeatherFormat.pressure(weather.pressureHpa),
+                ),
               _StatTile(
                 icon: Icons.umbrella_outlined,
                 label: 'Padavine',
                 value: WeatherFormat.rain(weather.dailyRainMm),
               ),
-              _StatTile(
-                icon: Icons.opacity,
-                label: 'Rosišče',
-                value: WeatherFormat.dew(weather.dewPointC),
-              ),
+              if (weather.dewPointC != null)
+                _StatTile(
+                  icon: Icons.opacity,
+                  label: 'Rosišče',
+                  value: WeatherFormat.dew(weather.dewPointC),
+                ),
             ];
             return Wrap(
               spacing: gap,
@@ -242,23 +249,25 @@ class _TemperatureHero extends StatelessWidget {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _MiniStat(
-                icon: Icons.arrow_upward,
-                value: WeatherFormat.degrees(weather.maxOutdoorTemperatureC),
-                tint: const Color(0xFFFB8C00),
-              ),
-              const SizedBox(height: 8),
-              _MiniStat(
-                icon: Icons.arrow_downward,
-                value: WeatherFormat.degrees(weather.minOutdoorTemperatureC),
-                tint: const Color(0xFF5DA9E9),
-              ),
-            ],
-          ),
+          if (weather.maxOutdoorTemperatureC != null ||
+              weather.minOutdoorTemperatureC != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _MiniStat(
+                  icon: Icons.arrow_upward,
+                  value: WeatherFormat.degrees(weather.maxOutdoorTemperatureC),
+                  tint: const Color(0xFFFB8C00),
+                ),
+                const SizedBox(height: 8),
+                _MiniStat(
+                  icon: Icons.arrow_downward,
+                  value: WeatherFormat.degrees(weather.minOutdoorTemperatureC),
+                  tint: const Color(0xFF5DA9E9),
+                ),
+              ],
+            ),
         ],
       ),
     );

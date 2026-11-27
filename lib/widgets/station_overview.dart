@@ -19,6 +19,10 @@ class StationOverview extends StatefulWidget {
   final WeatherStation station;
   final DrsiStation? road;
 
+  /// Hour of the camera snapshot on show; null = live. The readings then come
+  /// from that stored hour and the live road station is left out.
+  final DateTime? snapshotAt;
+
   /// Tests: use this series instead of fetching it.
   @visibleForTesting
   final List<WeatherPoint>? historyOverride;
@@ -27,6 +31,7 @@ class StationOverview extends StatefulWidget {
     super.key,
     required this.station,
     this.road,
+    this.snapshotAt,
     this.historyOverride,
   });
 
@@ -73,14 +78,22 @@ class _StationOverviewState extends State<StationOverview> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final w = widget.station.weather;
-    final road = widget.road;
+    final live = widget.station.weather;
+    final past = widget.snapshotAt != null;
+    final w = readingForSnapshot(live, _history, widget.snapshotAt);
+    // The road station reports only now; keep it out of a past hour.
+    final road = past ? null : widget.road;
     final risk = road?.risk;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (past && w == null)
+          Text(
+            'Za to uro ni shranjenih vremenskih podatkov.',
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
         // Current air conditions, then the road surface.
         if (w != null && w.outdoorTemperatureC != null)
           _AirCard(reading: w, history: _history)
@@ -109,10 +122,11 @@ class _StationOverviewState extends State<StationOverview> {
           const SizedBox(height: 8),
           _RiskBanner(risk: risk!, alarms: road.alarms),
         ],
-        if (w != null) ...[
+        if (live != null) ...[
           const SizedBox(height: 8),
+          // The 24-hour chart always ends at the live reading.
           _TemperatureHistoryCard(
-            reading: w,
+            reading: live,
             history: _history,
             title: widget.station.name,
           ),
@@ -251,7 +265,7 @@ class _AirCard extends StatelessWidget {
     final t = reading.outdoorTemperatureC!;
     final tint = AppTheme.temperatureColor(t);
     final text = AppTheme.temperatureTextColor(t, brightness);
-    final trend = hourlyTrend(t, history, DateTime.now());
+    final trend = hourlyTrend(t, history, reading.timestamp ?? DateTime.now());
     final lo = reading.minOutdoorTemperatureC;
     final hi = reading.maxOutdoorTemperatureC;
     final number = WeatherFormat.decimal(t);

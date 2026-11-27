@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,7 @@ import '../models/drsi_station.dart';
 import '../models/weather_station.dart';
 import '../providers/drsi_provider.dart';
 import '../providers/weather_provider.dart';
+import '../services/weather_history_service.dart';
 import 'app_sheet.dart';
 import 'drsi_sheet.dart' show drsiRiskColor;
 import 'interactive_webcam.dart';
@@ -32,7 +35,7 @@ void showRoadStationSheet(BuildContext context, DrsiStation road) {
 /// long-press = refresh. The slim pinned header keeps the update time and the
 /// close button; without a camera the header carries the name. The full
 /// reading follows below.
-class StationSheet extends ConsumerWidget {
+class StationSheet extends ConsumerStatefulWidget {
   /// The weather station; null for a lone DRSI road station ([roadId]).
   final int? stationId;
 
@@ -44,7 +47,35 @@ class StationSheet extends ConsumerWidget {
     : assert(stationId != null || roadId != null);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StationSheet> createState() => _StationSheetState();
+}
+
+class _StationSheetState extends ConsumerState<StationSheet> {
+  /// Hour of the picked camera snapshot (null = live) and the stored hourly
+  /// readings, so the caption and readings match the picture.
+  DateTime? _snapshotAt;
+  List<WeatherPoint> _history = const [];
+
+  int? get stationId => widget.stationId;
+  String? get roadId => widget.roadId;
+
+  @override
+  void initState() {
+    super.initState();
+    final id = stationId;
+    if (id == null) return;
+    final svc = WeatherHistoryService.instance;
+    _history = svc.cached(id) ?? const [];
+    // fetch() never throws: it returns an empty series on failure.
+    unawaited(
+      svc.fetch(id).then((points) {
+        if (mounted) setState(() => _history = points);
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final road = roadId == null
         ? null
         : ref.watch(
@@ -87,7 +118,11 @@ class StationSheet extends ConsumerWidget {
     final hasCamera = station.cameraLink.isNotEmpty;
     // Camera-only stations have no reading time: no subtitle at all rather
     // than "ni podatka".
-    final subtitle = updated == null
+    final snapshotAt = roadOnly ? null : _snapshotAt;
+    final reading = readingForSnapshot(station.weather, _history, snapshotAt);
+    final subtitle = snapshotAt != null
+        ? 'Podatki ob ${WeatherFormat.hour(snapshotAt)}'
+        : updated == null
         ? null
         : 'Posodobljeno: ${WeatherFormat.timestamp(updated)}';
 
@@ -110,17 +145,18 @@ class StationSheet extends ConsumerWidget {
             autoRefresh: const Duration(seconds: 60),
             // The worker keeps 24-hour history for weather-station cameras.
             showHistory: !roadOnly,
+            onSnapshotChanged: (at) => setState(() => _snapshotAt = at),
             fit: BoxFit.cover,
             borderRadius: 24,
             overlayName: name,
             overlayTemp: roadOnly
                 ? road?.roadTemp
-                : station.weather?.outdoorTemperatureC,
+                : reading?.outdoorTemperatureC,
           ),
           const SizedBox(height: 12),
         ],
         if (station.weather != null || road != null)
-          StationOverview(station: station, road: road)
+          StationOverview(station: station, road: road, snapshotAt: snapshotAt)
         else
           _cameraOnlyNote(context),
       ],

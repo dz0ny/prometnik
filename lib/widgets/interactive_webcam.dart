@@ -82,6 +82,10 @@ class InteractiveWebcam extends StatefulWidget {
   /// Show the "Zadnjih 24 ur" strip of hourly snapshots under the image.
   final bool showHistory;
 
+  /// Called with the hour of the picked history snapshot, or null when the
+  /// live frame is back, so the page can show the readings of that hour.
+  final ValueChanged<DateTime?>? onSnapshotChanged;
+
   const InteractiveWebcam({
     super.key,
     required this.station,
@@ -93,6 +97,7 @@ class InteractiveWebcam extends StatefulWidget {
     this.fit = BoxFit.contain,
     this.showRefreshButton = true,
     this.showHistory = false,
+    this.onSnapshotChanged,
   });
 
   @override
@@ -170,7 +175,10 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
           url: widget.station.cameraUrlWithBuster(_key),
           selected: _snapshot,
           refreshToken: _liveAt,
-          onSelect: (f) => setState(() => _snapshot = f),
+          onSelect: (f) {
+            setState(() => _snapshot = f);
+            widget.onSnapshotChanged?.call(f?.at);
+          },
         ),
       ],
     );

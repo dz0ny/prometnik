@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/weather_provider.dart';
 import '../router/navigation_notifier.dart';
+import '../services/weather_history_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/interactive_webcam.dart';
 import '../widgets/weather_details.dart';
@@ -23,6 +26,24 @@ class StationDetailScreen extends StatefulWidget {
 }
 
 class _StationDetailScreenState extends State<StationDetailScreen> {
+  /// Hour of the picked camera snapshot (null = live) and the stored hourly
+  /// readings, so the readings below match the picture.
+  DateTime? _snapshotAt;
+  List<WeatherPoint> _history = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    final svc = WeatherHistoryService.instance;
+    _history = svc.cached(widget.stationId) ?? const [];
+    // fetch() never throws: it returns an empty series on failure.
+    unawaited(
+      svc.fetch(widget.stationId).then((points) {
+        if (mounted) setState(() => _history = points);
+      }),
+    );
+  }
+
   Future<void> _openCameraInBrowser(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null || !uri.hasScheme) return;
@@ -68,7 +89,18 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
         final isFav = ref.watch(
           favoritesProvider.select((s) => s.contains(station.stationId)),
         );
+        final snapshotAt = _snapshotAt;
+        final reading = readingForSnapshot(
+          station.weather,
+          _history,
+          snapshotAt,
+        );
         final updated = station.weather?.timestamp;
+        final timeLabel = snapshotAt != null
+            ? 'Podatki ob ${WeatherFormat.hour(snapshotAt)}'
+            : updated != null
+            ? 'Posodobljeno: ${WeatherFormat.timestamp(updated)}'
+            : null;
 
         return AdaptiveScaffold(
           appBar: AdaptiveAppBar(
@@ -114,20 +146,21 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                   station: station,
                   autoRefresh: const Duration(seconds: 60),
                   showHistory: true,
+                  onSnapshotChanged: (at) => setState(() => _snapshotAt = at),
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    if (updated != null) ...[
+                    if (timeLabel != null) ...[
                       Icon(
-                        Icons.schedule,
+                        snapshotAt != null ? Icons.history : Icons.schedule,
                         size: 16,
                         color: cs.onSurfaceVariant,
                       ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          'Posodobljeno: ${WeatherFormat.timestamp(updated)}',
+                          timeLabel,
                           style: TextStyle(
                             color: cs.onSurfaceVariant,
                             fontSize: 12,
@@ -152,7 +185,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                if (station.weather == null)
+                if (station.weather == null || reading == null)
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -168,8 +201,11 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Ta postaja ima samo kamero in ne sporoča '
-                            'vremenskih podatkov.',
+                            station.weather == null
+                                ? 'Ta postaja ima samo kamero in ne sporoča '
+                                      'vremenskih podatkov.'
+                                : 'Za to uro ni shranjenih vremenskih '
+                                      'podatkov.',
                             style: TextStyle(color: cs.onSurfaceVariant),
                           ),
                         ),
@@ -177,7 +213,7 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                     ),
                   )
                 else
-                  WeatherDetailsView(weather: station.weather!),
+                  WeatherDetailsView(weather: reading),
               ],
             ),
           ),

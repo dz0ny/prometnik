@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/weather_station.dart';
 import 'webcam_proxy.dart';
 
 /// One hourly reading of a weather station.
@@ -74,6 +75,48 @@ class WeatherHistoryService {
       return const [];
     }
   }
+}
+
+/// The reading in [history] closest to [at], if one lies within [tolerance];
+/// used to show the temperature of an hourly camera snapshot.
+WeatherPoint? weatherPointAt(
+  List<WeatherPoint> history,
+  DateTime at, {
+  Duration tolerance = const Duration(minutes: 45),
+}) {
+  WeatherPoint? best;
+  Duration? bestGap;
+  for (final p in history) {
+    final gap = p.at.difference(at).abs();
+    if (gap <= tolerance && (bestGap == null || gap < bestGap)) {
+      best = p;
+      bestGap = gap;
+    }
+  }
+  return best;
+}
+
+/// What the station measured when a camera snapshot was taken: [live] when
+/// [at] is null (the live frame), the stored hour nearest [at] otherwise, and
+/// null when no reading lies near [at], never a value from another time.
+/// Pressure, dew point and the day's range are not stored per hour.
+WeatherReading? readingForSnapshot(
+  WeatherReading? live,
+  List<WeatherPoint> history,
+  DateTime? at,
+) {
+  if (at == null || live == null) return live;
+  final p = weatherPointAt(history, at);
+  if (p == null) return null;
+  return WeatherReading(
+    timestamp: p.at,
+    outdoorTemperatureC: p.tempC,
+    humidityPercentage: p.humidity?.round(),
+    windDirection: p.windDir,
+    windSpeedKmh: p.windKmh,
+    windGustKmh: p.gustKmh,
+    dailyRainMm: p.rainMm,
+  );
 }
 
 /// Parses the worker's `/weather` response; anything unexpected → empty.
