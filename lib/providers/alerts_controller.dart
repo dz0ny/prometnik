@@ -1,6 +1,9 @@
 import 'dart:async';
-import 'package:flutter/widgets.dart';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+
 import '../models/traffic_event.dart';
 import '../models/travel_time.dart';
 import 'events_provider.dart';
@@ -17,46 +20,153 @@ class NearbyEvent {
   const NearbyEvent(this.event, this.distanceMeters);
 }
 
-/// Tracks the user's location and the set of watched roads, exposes nearby /
-/// watched events, and fires local notifications (while the app is running) for
-/// significant events that are nearby or on a watched road.
-class AlertsController extends ChangeNotifier {
-  AlertsController() {
-    _watchedRoads.addAll(Prefs.getStringList('alerts.watchedRefs', const []));
-    _watchedTravelTimes.addAll(
-      Prefs.getStringList('alerts.watchedTravelTimeIds', const []),
-    );
-    // Remember what was already alerted so a cold start doesn't re-notify
-    // every long-running closure / roadworks on watched roads.
-    _notified.addAll(Prefs.getStringList(_notifiedKey, const []));
-  }
+/// Immutable snapshot of location, watched roads/routes and the events they
+/// apply to. Derived lists are computed on read.
+@immutable
+class AlertsState {
+  final Position? position;
+  final bool locationEnabled;
+  final bool requesting;
+  final List<TrafficEvent> events;
 
+  /// Watched road refs (e.g. "A1", "651").
+  final Set<String> watchedRoads;
+  final Set<String> watchedTravelTimes;
+
+  /// Why the last location request (or the running position stream) failed;
+  /// null while location works or before the user asked for it.
+  final LocationStatus? locationProblem;
+
+  /// True after the user declined notification permission when turning on a
+  /// travel-time alert (the alert was then not turned on).
+  final bool notificationsDenied;
+
+  const AlertsState({
+    this.position,
+    this.locationEnabled = false,
+    this.requesting = false,
+    this.events = const [],
+    this.watchedRoads = const {},
+    this.watchedTravelTimes = const {},
+    this.locationProblem,
+    this.notificationsDenied = false,
+  });
+
+  bool get hasWatched => watchedRoads.isNotEmpty;
+  bool isWatched(String ref) => watchedRoads.contains(ref);
+  bool isTravelTimeWatched(String id) => watchedTravelTimes.contains(id);
+
+  /// Slovenian text for [locationProblem], or null.
+  String? get locationProblemMessage => locationProblem?.message;
+
+  /// Whether opening settings can fix [locationProblem] (a plain
+  /// [LocationStatus.denied] can also be retried with enableLocation).
+  bool get canOpenLocationSettings =>
+      locationProblem == LocationStatus.deniedForever ||
+      locationProblem == LocationStatus.serviceDisabled;
+
+  /// Active events on watched roads.
+  List<TrafficEvent> get watchedEvents => [
+    for (final e in events)
+      if (e.isActive() && eventOnRoads(e, watchedRoads)) e,
+  ];
+
+  /// All events sorted by distance from the user (empty without a fix).
+  List<NearbyEvent> get nearbyEvents {
+    final p = position;
+    if (p == null) return const [];
+    return [
+      for (final e in events)
+        if (e.hasPosition)
+          NearbyEvent(
+            e,
+            LocationService.instance.distanceMeters(
+              p.latitude,
+              p.longitude,
+              e.position.latitude,
+              e.position.longitude,
+            ),
+          ),
+    ]..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+  }
+}
+
+/// Whether [e] is on one of [roads] (OSM refs, possibly combined "A1;A2").
+bool eventOnRoads(TrafficEvent e, Set<String> roads) {
+  final ref = eventRoadRef(e.road);
+  return ref != null && roads.any((w) => roadRefMatches(ref, w));
+}
+
+/// Tracks the user's location and the watched roads/routes, and fires local
+/// notifications for significant events nearby or on a watched road, and for
+/// changes on watched travel-time routes.
+///
+/// It listens to the events and travel-time feeds directly (not via a widget
+/// rebuild), so alerts still fire when a poll completes in the background.
+class AlertsNotifier extends Notifier<AlertsState> {
   static const _notifiedKey = 'alerts.notifiedIds';
 
   /// Minimum gap between two travel-time notifications for the same route.
   static const Duration _travelAlertCooldown = Duration(minutes: 10);
 
-  EventsProvider? _eventsSource;
-  TravelTimesProvider? _travelSource;
+  bool _building = false;
 
-  /// Listen to the data providers directly (not via a widget rebuild), so
-  /// alerts still fire when a poll completes while the app is backgrounded.
-  void attach(EventsProvider events, TravelTimesProvider travelTimes) {
-    _eventsSource = events..addListener(_onEventsChanged);
-    _travelSource = travelTimes..addListener(_onTravelTimesChanged);
-    _onEventsChanged();
-    _onTravelTimesChanged();
+  @override
+  AlertsState build() {
+    _building = true;
+    _watchedRoads
+      ..clear()
+      ..addAll(Prefs.getStringList('alerts.watchedRefs', const []));
+    _watchedTravelTimes
+      ..clear()
+      ..addAll(Prefs.getStringList('alerts.watchedTravelTimeIds', const []));
+    // Remember what was already alerted so a cold start doesn't re-notify
+    // every long-running closure / roadworks on watched roads.
+    _notified
+      ..clear()
+      ..addAll(Prefs.getStringList(_notifiedKey, const []));
+
+    ref.listen(
+      eventsProvider.select((s) => s.items),
+      (_, items) => updateEvents(items),
+      fireImmediately: true,
+    );
+    ref.listen(
+      travelTimesProvider.select((s) => s.items),
+      (_, items) => updateTravelTimes(items),
+      fireImmediately: true,
+    );
+    ref.onDispose(() => unawaited(_sub?.cancel()));
+    // Silently resume tracking if permission was granted before.
+    scheduleMicrotask(() {
+      unawaited(
+        bootstrap().catchError((Object e, StackTrace s) {
+          debugPrint('alerts bootstrap failed: $e\n$s');
+        }),
+      );
+    });
+    _building = false;
+    return _snapshot();
   }
 
-  void _onEventsChanged() {
-    final src = _eventsSource;
-    if (src != null) updateEvents(src.events);
+  AlertsState _snapshot() => AlertsState(
+    position: _position,
+    locationEnabled: _locationEnabled,
+    requesting: _requesting,
+    events: _events,
+    watchedRoads: Set.unmodifiable(_watchedRoads),
+    watchedTravelTimes: Set.unmodifiable(_watchedTravelTimes),
+    locationProblem: _locationProblem,
+    notificationsDenied: _notificationsDenied,
+  );
+
+  /// Publish the current fields as a new immutable state.
+  void _emit() {
+    if (_building || !ref.mounted) return;
+    state = _snapshot();
   }
 
-  void _onTravelTimesChanged() {
-    final src = _travelSource;
-    if (src != null) updateTravelTimes(src.items);
-  }
+  bool get _disposed => !ref.mounted;
 
   /// Alert radius for proximity notifications.
   static const double _alertRadiusMeters = 10000;
@@ -73,33 +183,10 @@ class AlertsController extends ChangeNotifier {
   final Map<String, DateTime> _lastTravelAlertAt = {};
   StreamSubscription<Position>? _sub;
   Future<void>? _starting;
-  bool _disposed = false;
 
   LocationStatus? _locationProblem;
   bool _notificationsDenied = false;
   final Set<String> _pendingTravelToggles = {};
-
-  Position? get position => _position;
-  bool get locationEnabled => _locationEnabled;
-  bool get requesting => _requesting;
-
-  /// Why the last [enableLocation] (or the running position stream) failed;
-  /// null while location works or before the user asked for it.
-  LocationStatus? get locationProblem => _locationProblem;
-
-  /// Slovenian text for [locationProblem], or null.
-  String? get locationProblemMessage => _locationProblem?.message;
-
-  /// Whether [openLocationSettings] can fix [locationProblem] (a plain
-  /// [LocationStatus.denied] can also be retried with [enableLocation]).
-  bool get canOpenLocationSettings =>
-      _locationProblem == LocationStatus.deniedForever ||
-      _locationProblem == LocationStatus.serviceDisabled;
-
-  /// True after the user declined notification permission when turning on a
-  /// travel-time alert (the alert was then not turned on). Cleared once a
-  /// later request is granted, or by [dismissNotificationsDenied].
-  bool get notificationsDenied => _notificationsDenied;
 
   /// Open the system screen that fixes [locationProblem] (app settings when
   /// permission is denied, location settings when services are off). Call
@@ -117,25 +204,14 @@ class AlertsController extends ChangeNotifier {
   void dismissLocationProblem() {
     if (_locationProblem == null) return;
     _locationProblem = null;
-    notifyListeners();
+    _emit();
   }
 
   void dismissNotificationsDenied() {
     if (!_notificationsDenied) return;
     _notificationsDenied = false;
-    notifyListeners();
+    _emit();
   }
-
-  /// All current events (sorted as delivered by the service: priority, road).
-  List<TrafficEvent> get events => List.unmodifiable(_events);
-
-  /// Watched road refs (e.g. "A1", "651").
-  Set<String> get watchedRoads => Set.unmodifiable(_watchedRoads);
-  Set<String> get watchedTravelTimes => Set.unmodifiable(_watchedTravelTimes);
-  bool get hasWatched => _watchedRoads.isNotEmpty;
-
-  bool isWatched(String ref) => _watchedRoads.contains(ref);
-  bool isTravelTimeWatched(String id) => _watchedTravelTimes.contains(id);
 
   /// Toggle a watched road ref (used by the map picker).
   void toggleRoad(String ref) {
@@ -169,7 +245,7 @@ class AlertsController extends ChangeNotifier {
     if (_disposed) return false;
     if (!granted) {
       _notificationsDenied = true;
-      notifyListeners();
+      _emit();
       return false;
     }
     _notificationsDenied = false;
@@ -199,7 +275,7 @@ class AlertsController extends ChangeNotifier {
   void _persistWatched() {
     Prefs.setStringList('alerts.watchedRefs', _watchedRoads.toList());
     _checkAlerts();
-    notifyListeners();
+    _emit();
   }
 
   void _persistWatchedTravelTimes() {
@@ -207,38 +283,10 @@ class AlertsController extends ChangeNotifier {
       'alerts.watchedTravelTimeIds',
       _watchedTravelTimes.toList(),
     );
-    notifyListeners();
+    _emit();
   }
 
-  bool _onWatchedRoad(TrafficEvent e) {
-    final ref = eventRoadRef(e.road);
-    // Watched refs come from OSM and may be combined ("A1;A2").
-    return ref != null && _watchedRoads.any((w) => roadRefMatches(ref, w));
-  }
-
-  /// Active events on watched roads.
-  List<TrafficEvent> get watchedEvents =>
-      _events.where((e) => e.isActive() && _onWatchedRoad(e)).toList();
-
-  /// All events sorted by distance from the user (empty without a fix).
-  List<NearbyEvent> get nearbyEvents {
-    final p = _position;
-    if (p == null) return const [];
-    final out = [
-      for (final e in _events)
-        if (e.hasPosition)
-          NearbyEvent(
-            e,
-            LocationService.instance.distanceMeters(
-              p.latitude,
-              p.longitude,
-              e.position.latitude,
-              e.position.longitude,
-            ),
-          ),
-    ]..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
-    return out;
-  }
+  bool _onWatchedRoad(TrafficEvent e) => eventOnRoads(e, _watchedRoads);
 
   /// Called whenever the events list changes. Deferred to a microtask (not a
   /// post-frame callback, which never runs while the app draws no frames in
@@ -248,7 +296,7 @@ class AlertsController extends ChangeNotifier {
     scheduleMicrotask(() {
       if (_disposed) return;
       _checkAlerts();
-      notifyListeners();
+      _emit();
     });
   }
 
@@ -261,7 +309,7 @@ class AlertsController extends ChangeNotifier {
     scheduleMicrotask(() {
       if (_disposed) return;
       _checkTravelTimeAlerts(previous);
-      notifyListeners();
+      _emit();
     });
   }
 
@@ -277,7 +325,7 @@ class AlertsController extends ChangeNotifier {
   Future<void> enableLocation() async {
     if (_requesting || _locationEnabled) return;
     _requesting = true;
-    notifyListeners();
+    _emit();
     try {
       final status = await LocationService.instance.requestPermission();
       if (status == LocationStatus.granted) {
@@ -295,13 +343,15 @@ class AlertsController extends ChangeNotifier {
       _locationEnabled = false;
     } finally {
       _requesting = false;
-      if (!_disposed) notifyListeners();
+      _emit();
     }
   }
 
   /// Single-flight: bootstrap() and enableLocation() may overlap.
   Future<void> _startTracking() =>
-      _starting ??= _doStartTracking().whenComplete(() => _starting = null);
+      _starting ??= _doStartTracking().whenComplete(() {
+        _starting = null;
+      });
 
   Future<void> _doStartTracking() async {
     await _sub?.cancel();
@@ -309,7 +359,7 @@ class AlertsController extends ChangeNotifier {
       (pos) {
         _position = pos;
         _checkAlerts();
-        notifyListeners();
+        _emit();
       },
       onError: (Object e) {
         // Location switched off / permission revoked while running.
@@ -322,7 +372,7 @@ class AlertsController extends ChangeNotifier {
         }
         unawaited(_sub?.cancel());
         _sub = null;
-        if (!_disposed) notifyListeners();
+        _emit();
       },
     );
     _locationEnabled = true;
@@ -330,7 +380,7 @@ class AlertsController extends ChangeNotifier {
     _position = await LocationService.instance.current() ?? _position;
     if (_disposed) return;
     _checkAlerts();
-    notifyListeners();
+    _emit();
   }
 
   void _checkAlerts() {
@@ -423,13 +473,8 @@ class AlertsController extends ChangeNotifier {
       (id, _) => !_watchedTravelTimes.contains(id),
     );
   }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    _eventsSource?.removeListener(_onEventsChanged);
-    _travelSource?.removeListener(_onTravelTimesChanged);
-    unawaited(_sub?.cancel());
-    super.dispose();
-  }
 }
+
+final alertsProvider = NotifierProvider<AlertsNotifier, AlertsState>(
+  AlertsNotifier.new,
+);

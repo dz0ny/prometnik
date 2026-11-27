@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../providers/alerts_controller.dart';
 import '../router/route_names.dart';
 import '../services/notifications_service.dart';
@@ -76,8 +77,9 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
           'V zavihku Bližina vklopi lokacijo za dogodke v bližini. Za '
           'spremljane ceste tapni "Izberi na karti" in nato tapni cesto na '
           'karti — obvestili te bomo o dogodkih na njej.',
-      child: Consumer<AlertsController>(
-        builder: (context, alerts, _) {
+      child: Consumer(
+        builder: (context, ref, _) {
+          final alerts = ref.watch(alertsProvider);
           final problem = alerts.locationProblemMessage;
           return Column(
             mainAxisSize: MainAxisSize.min,
@@ -95,7 +97,8 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
               ],
               if (problem != null && alerts.canOpenLocationSettings)
                 AdaptiveButton(
-                  onPressed: alerts.openLocationSettings,
+                  onPressed: () =>
+                      ref.read(alertsProvider.notifier).openLocationSettings(),
                   label: 'Odpri nastavitve',
                   style: AdaptiveButtonStyle.tinted,
                 )
@@ -103,7 +106,8 @@ class _IntroWizardScreenState extends State<IntroWizardScreen> {
                 AdaptiveButton(
                   onPressed: alerts.locationEnabled || alerts.requesting
                       ? () {}
-                      : alerts.enableLocation,
+                      : () =>
+                            ref.read(alertsProvider.notifier).enableLocation(),
                   label: alerts.locationEnabled
                       ? 'Lokacija vklopljena'
                       : (alerts.requesting
@@ -277,9 +281,8 @@ class _Page extends StatelessWidget {
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(context).textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 18),
               Text(

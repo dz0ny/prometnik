@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/weather_station.dart';
 import '../providers/weather_provider.dart';
 import 'app_sheet.dart';
 import 'interactive_webcam.dart';
@@ -22,7 +21,7 @@ void showStationSheet(BuildContext context, int stationId, {String? roadId}) {
 /// update time in the pinned header, the live webcam (tap or the fullscreen
 /// button = fullscreen; the refresh button or a long-press = refresh) and the
 /// full weather reading below.
-class StationSheet extends StatelessWidget {
+class StationSheet extends ConsumerWidget {
   final int stationId;
 
   /// Id of a DRSI road station at the same spot; its road-surface data is
@@ -32,10 +31,8 @@ class StationSheet extends StatelessWidget {
   const StationSheet({super.key, required this.stationId, this.roadId});
 
   @override
-  Widget build(BuildContext context) {
-    final station = context.select<WeatherProvider, WeatherStation?>(
-      (p) => p.byId(stationId),
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final station = ref.watch(weatherProvider.select((s) => s.byId(stationId)));
     if (station == null) {
       return const AppSheet(
         title: 'Postaja',
@@ -52,12 +49,14 @@ class StationSheet extends StatelessWidget {
     final updated = station.weather?.timestamp;
     final road = roadId == null
         ? null
-        : context.select<DrsiProvider, DrsiStation?>((p) {
-            for (final s in p.items) {
-              if (s.id == roadId) return s;
-            }
-            return null;
-          });
+        : ref.watch(
+            drsiProvider.select<DrsiStation?>((p) {
+              for (final s in p.items) {
+                if (s.id == roadId) return s;
+              }
+              return null;
+            }),
+          );
 
     return AppSheet(
       title: station.name.isEmpty ? 'Postaja' : station.name,

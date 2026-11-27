@@ -2,9 +2,11 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/traffic_event.dart';
 import '../models/travel_time.dart';
+import '../providers/feed.dart';
 import '../providers/alerts_controller.dart';
 import '../providers/events_provider.dart';
 import '../providers/travel_times_provider.dart';
@@ -35,20 +37,23 @@ class TravelTimesTab extends StatelessWidget {
     return AdaptiveScaffold(
       body: SafeArea(
         bottom: false,
-        child: Consumer<TravelTimesProvider>(
-          builder: (context, provider, _) {
+        child: Consumer(
+          builder: (context, ref, _) {
+            final provider = ref.watch(travelTimesProvider);
+            Future<void> refresh() =>
+                ref.read(travelTimesProvider.notifier).refresh();
             if (provider.isLoading && !provider.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
             if (provider.error != null && !provider.hasData) {
-              return _error(context, provider);
+              return _error(context, provider, refresh);
             }
             if (provider.items.isEmpty) {
               return _empty(context);
             }
 
             return RefreshIndicator(
-              onRefresh: provider.refresh,
+              onRefresh: refresh,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.only(
@@ -79,9 +84,8 @@ class TravelTimesTab extends StatelessWidget {
                             height: 1,
                             thickness: 0.5,
                             indent: 28,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.outline.withValues(alpha: 0.3),
+                            color: Theme.of(context).colorScheme.outline
+                                .withValues(alpha: 0.3),
                           ),
                       ],
                     ],
@@ -115,7 +119,11 @@ class TravelTimesTab extends StatelessWidget {
     );
   }
 
-  Widget _error(BuildContext context, TravelTimesProvider provider) {
+  Widget _error(
+    BuildContext context,
+    FeedState<TravelTime> provider,
+    Future<void> Function() refresh,
+  ) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -127,7 +135,7 @@ class TravelTimesTab extends StatelessWidget {
             Text(provider.error ?? '', textAlign: TextAlign.center),
             const SizedBox(height: 12),
             AdaptiveButton.child(
-              onPressed: provider.refresh,
+              onPressed: refresh,
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -144,17 +152,16 @@ class TravelTimesTab extends StatelessWidget {
   }
 }
 
-class _TravelRow extends StatelessWidget {
+class _TravelRow extends ConsumerWidget {
   final TravelTime item;
 
   const _TravelRow({super.key, required this.item});
 
-  Future<void> _toggleAlerts(
-    BuildContext context,
-    AlertsController alerts,
-  ) async {
+  Future<void> _toggleAlerts(BuildContext context, WidgetRef ref) async {
+    final alerts = ref.read(alertsProvider.notifier);
     final nowWatched = await alerts.toggleTravelTime(item.id);
-    if (nowWatched || !alerts.notificationsDenied || !context.mounted) return;
+    if (nowWatched || !context.mounted) return;
+    if (!ref.read(alertsProvider).notificationsDenied) return;
     showSheetSnack(
       context,
       message: 'Obvestila so izklopljena. Omogoči jih v nastavitvah.',
@@ -165,12 +172,13 @@ class _TravelRow extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final color = TravelTimesTab._statusColor(item.status);
-    final alerts = context.watch<AlertsController>();
-    final events = context.watch<EventsProvider>().events;
-    final watched = alerts.isTravelTimeWatched(item.id);
+    final events = ref.watch(eventsProvider.select((s) => s.items));
+    final watched = ref.watch(
+      alertsProvider.select((s) => s.isTravelTimeWatched(item.id)),
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
@@ -261,7 +269,7 @@ class _TravelRow extends StatelessWidget {
                     iconColor: watched ? cs.primary : cs.onSurfaceVariant,
                     style: AdaptiveButtonStyle.plain,
                     minSize: const Size(44, 44),
-                    onPressed: () => _toggleAlerts(context, alerts),
+                    onPressed: () => _toggleAlerts(context, ref),
                   ),
                 ),
               ),

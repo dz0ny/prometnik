@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models/traffic_event.dart';
 import 'event_visuals.dart';
 

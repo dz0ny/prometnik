@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../providers/burja_provider.dart';
 import '../providers/cameras_provider.dart';
 import '../providers/events_provider.dart';
+import '../providers/feed.dart';
 import '../providers/rest_areas_provider.dart';
 import '../providers/travel_times_provider.dart';
 import '../providers/weather_provider.dart';
@@ -13,55 +17,34 @@ import '../router/navigation_notifier.dart';
 import '../screens/about_screen.dart';
 
 /// Main scaffold with bottom navigation for the app shell.
-class MainScaffold extends StatefulWidget {
+class MainScaffold extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
 
   const MainScaffold({super.key, required this.navigationShell});
 
   @override
-  State<MainScaffold> createState() => _MainScaffoldState();
+  ConsumerState<MainScaffold> createState() => _MainScaffoldState();
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
+class _MainScaffoldState extends ConsumerState<MainScaffold> {
   int _tabTapCount = 0;
   DateTime? _lastTabTap;
-  NavigationNotifier? _navNotifier;
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final notifier = context.read<NavigationNotifier>();
-    if (!identical(_navNotifier, notifier)) {
-      _navNotifier?.removeListener(_handlePendingNavigation);
-      _navNotifier = notifier;
-      _navNotifier?.addListener(_handlePendingNavigation);
-    }
-  }
-
-  @override
-  void dispose() {
-    _navNotifier?.removeListener(_handlePendingNavigation);
-    super.dispose();
-  }
-
-  void _handlePendingNavigation() {
-    final navNotifier = context.read<NavigationNotifier>();
-    final stationId = navNotifier.pendingStationOnMap;
-    if (stationId != null) {
-      widget.navigationShell.goBranch(0); // Switch to map tab
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        mapTabKey.currentState?.focusStation(stationId);
-        navNotifier.clearPendingStation();
-      });
-    }
-    final location = navNotifier.pendingLocationOnMap;
-    if (location != null) {
-      widget.navigationShell.goBranch(0); // Switch to map tab
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        mapTabKey.currentState?.focusLocation(location);
-        navNotifier.clearPendingLocation();
-      });
-    }
+  /// Cross-tab "show on map" requests: switch to the map tab, then focus.
+  void _handleMapRequest(MapRequest? request) {
+    if (request == null) return;
+    widget.navigationShell.goBranch(0); // Switch to map tab
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final map = mapTabKey.currentState;
+      switch (request) {
+        case ShowStationOnMap(:final stationId):
+          map?.focusStation(stationId);
+        case ShowLocationOnMap(:final location):
+          map?.focusLocation(location);
+      }
+      ref.read(mapRequestProvider.notifier).clear();
+    });
   }
 
   void _handleTabTap(int index) {
@@ -90,12 +73,16 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
 
     // Pick up fresh data when switching tabs if it's stale.
-    context.read<WeatherProvider>().refreshIfStale();
-    context.read<EventsProvider>().refreshIfStale();
-    context.read<CamerasProvider>().refreshIfStale();
-    context.read<RestAreasProvider>().refreshIfStale();
-    context.read<BurjaProvider>().refreshIfStale();
-    context.read<TravelTimesProvider>().refreshIfStale();
+    for (final feed in <FeedNotifier<Object?>>[
+      ref.read(weatherProvider.notifier),
+      ref.read(eventsProvider.notifier),
+      ref.read(camerasProvider.notifier),
+      ref.read(restAreasProvider.notifier),
+      ref.read(burjaProvider.notifier),
+      ref.read(travelTimesProvider.notifier),
+    ]) {
+      unawaited(feed.refreshIfStale());
+    }
   }
 
   /// Builds a destination using native SF Symbols on iOS and Material icons on
@@ -118,7 +105,7 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<NavigationNotifier>();
+    ref.listen(mapRequestProvider, (_, next) => _handleMapRequest(next));
     final index = widget.navigationShell.currentIndex;
     final cs = Theme.of(context).colorScheme;
 

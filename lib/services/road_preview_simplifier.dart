@@ -1,5 +1,7 @@
 import 'dart:math';
+
 import 'package:latlong2/latlong.dart';
+
 import 'roads_service.dart';
 
 class RoadPreviewSimplifier {

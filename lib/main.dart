@@ -1,19 +1,18 @@
-import 'dart:async';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'providers/alerts_controller.dart';
 import 'providers/burja_provider.dart';
+import 'providers/feed.dart';
 import 'providers/drsi_provider.dart';
 import 'providers/cameras_provider.dart';
 import 'providers/events_provider.dart';
-import 'providers/favorites_provider.dart';
 import 'providers/rest_areas_provider.dart';
 import 'providers/travel_times_provider.dart';
 import 'providers/weather_provider.dart';
 import 'router/app_router.dart';
-import 'router/navigation_notifier.dart';
 import 'screens/intro_wizard_screen.dart';
 import 'services/map_tile_cache_service.dart';
 import 'services/prefs.dart';
@@ -23,7 +22,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Prefs.init();
   await MapTileCacheService.instance.initialize();
-  runApp(const PrometApp());
+  // The composition root: every provider lives in this one scope.
+  runApp(const ProviderScope(child: PrometApp()));
 }
 
 class PrometApp extends StatefulWidget {
@@ -50,36 +50,7 @@ class _PrometAppState extends State<PrometApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => WeatherProvider()..start()),
-        ChangeNotifierProvider(create: (_) => EventsProvider()..start()),
-        ChangeNotifierProvider(create: (_) => CamerasProvider()..start()),
-        ChangeNotifierProvider(create: (_) => RestAreasProvider()..start()),
-        ChangeNotifierProvider(create: (_) => BurjaProvider()..start()),
-        ChangeNotifierProvider(create: (_) => DrsiProvider()..start()),
-        ChangeNotifierProvider(create: (_) => TravelTimesProvider()..start()),
-        ChangeNotifierProvider(create: (_) => FavoritesProvider()..load()),
-        ChangeNotifierProvider(create: (_) => NavigationNotifier()),
-        // Location/watched-road alerts; listens to the data providers
-        // directly so polls finishing in the background still alert.
-        ChangeNotifierProvider(
-          lazy: false,
-          create: (ctx) {
-            final alerts = AlertsController()
-              ..attach(
-                ctx.read<EventsProvider>(),
-                ctx.read<TravelTimesProvider>(),
-              );
-            unawaited(
-              alerts.bootstrap().catchError((Object e, StackTrace s) {
-                debugPrint('alerts bootstrap failed: $e\n$s');
-              }),
-            );
-            return alerts;
-          },
-        ),
-      ],
+    return _AppServices(
       child: _PollingLifecycle(
         child: AdaptiveApp.router(
           title: 'Prometnik',
@@ -120,15 +91,15 @@ class _PrometAppState extends State<PrometApp> {
 /// Pauses data polling while the app is in the background (saves data and
 /// battery). Events and travel times keep polling only when the user watches
 /// something, so watched-road / route alerts can still fire.
-class _PollingLifecycle extends StatefulWidget {
+class _PollingLifecycle extends ConsumerStatefulWidget {
   final Widget child;
   const _PollingLifecycle({required this.child});
 
   @override
-  State<_PollingLifecycle> createState() => _PollingLifecycleState();
+  ConsumerState<_PollingLifecycle> createState() => _PollingLifecycleState();
 }
 
-class _PollingLifecycleState extends State<_PollingLifecycle> {
+class _PollingLifecycleState extends ConsumerState<_PollingLifecycle> {
   late final AppLifecycleListener _listener;
 
   @override
@@ -137,28 +108,34 @@ class _PollingLifecycleState extends State<_PollingLifecycle> {
     _listener = AppLifecycleListener(onPause: _pause, onResume: _resume);
   }
 
+  /// Every polled feed, for pausing/resuming together.
+  List<FeedNotifier<Object?>> get _feeds => [
+    ref.read(weatherProvider.notifier),
+    ref.read(camerasProvider.notifier),
+    ref.read(restAreasProvider.notifier),
+    ref.read(burjaProvider.notifier),
+    ref.read(drsiProvider.notifier),
+    ref.read(eventsProvider.notifier),
+    ref.read(travelTimesProvider.notifier),
+  ];
+
   void _pause() {
-    context.read<WeatherProvider>().stop();
-    context.read<CamerasProvider>().stop();
-    context.read<RestAreasProvider>().stop();
-    context.read<BurjaProvider>().stop();
-    context.read<DrsiProvider>().stop();
-    final alerts = context.read<AlertsController>();
-    if (!alerts.hasWatched) context.read<EventsProvider>().stop();
-    if (alerts.watchedTravelTimes.isEmpty) {
-      context.read<TravelTimesProvider>().stop();
+    final alerts = ref.read(alertsProvider);
+    for (final feed in _feeds) {
+      // Events and travel times keep polling while something is watched.
+      if (feed is EventsFeed && alerts.hasWatched) continue;
+      if (feed is TravelTimesFeed && alerts.watchedTravelTimes.isNotEmpty) {
+        continue;
+      }
+      feed.stop();
     }
   }
 
   void _resume() {
     // start() refreshes immediately and re-arms the timer (no-op if running).
-    context.read<WeatherProvider>().start();
-    context.read<CamerasProvider>().start();
-    context.read<RestAreasProvider>().start();
-    context.read<BurjaProvider>().start();
-    context.read<DrsiProvider>().start();
-    context.read<EventsProvider>().start();
-    context.read<TravelTimesProvider>().start();
+    for (final feed in _feeds) {
+      feed.start();
+    }
   }
 
   @override
@@ -169,6 +146,26 @@ class _PollingLifecycleState extends State<_PollingLifecycle> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// Starts the long-lived services eagerly (Riverpod providers are lazy): the
+/// feeds begin polling and alerts begin listening at app start, not when a
+/// screen first reads them.
+class _AppServices extends ConsumerWidget {
+  final Widget child;
+  const _AppServices({required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref
+      ..watch(alertsProvider.select((_) => null))
+      ..watch(weatherProvider.select((_) => null))
+      ..watch(camerasProvider.select((_) => null))
+      ..watch(restAreasProvider.select((_) => null))
+      ..watch(burjaProvider.select((_) => null))
+      ..watch(drsiProvider.select((_) => null));
+    return child;
+  }
 }
 
 /// Holds the GoRouter so it survives rebuilds and is disposed cleanly.

@@ -41,7 +41,8 @@ class TravelTime {
   bool get hasDelay => !isClosed && delayMs > 60000;
 
   factory TravelTime.fromFeature(Map<String, dynamic> feature) {
-    final props = (feature['properties'] as Map?)?.cast<String, dynamic>() ?? {};
+    final props =
+        (feature['properties'] as Map?)?.cast<String, dynamic>() ?? {};
 
     int toInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
     String toStr(dynamic v) => (v as String?)?.trim() ?? '';

@@ -1,7 +1,7 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/favorites_provider.dart';
@@ -45,10 +45,13 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<WeatherProvider>(
-      builder: (context, provider, _) {
-        final station = provider.byId(widget.stationId);
-        if (station == null && provider.isLoading) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final station = ref.watch(
+          weatherProvider.select((s) => s.byId(widget.stationId)),
+        );
+        final isLoading = ref.watch(weatherProvider.select((s) => s.isLoading));
+        if (station == null && isLoading) {
           // Deep link opened before the weather feed arrived.
           return const AdaptiveScaffold(
             appBar: AdaptiveAppBar(title: 'Postaja'),
@@ -62,8 +65,9 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
           );
         }
         final cs = Theme.of(context).colorScheme;
-        final favs = context.watch<FavoritesProvider>();
-        final isFav = favs.isFavorite(station.stationId);
+        final isFav = ref.watch(
+          favoritesProvider.select((s) => s.contains(station.stationId)),
+        );
         final updated = station.weather?.timestamp;
 
         return AdaptiveScaffold(
@@ -77,16 +81,18 @@ class _StationDetailScreenState extends State<StationDetailScreen> {
                     ? 'Odstrani iz priljubljenih'
                     : 'Dodaj med priljubljene',
                 tintColor: isFav ? const Color(0xFFFFB74D) : null,
-                onPressed: () => favs.toggle(station.stationId),
+                onPressed: () => ref
+                    .read(favoritesProvider.notifier)
+                    .toggle(station.stationId),
               ),
               AdaptiveAppBarAction(
                 icon: Icons.map_outlined,
                 iosSymbol: 'map',
                 label: 'Pokaži na karti',
                 onPressed: () {
-                  context.read<NavigationNotifier>().showStationOnMap(
-                    station.stationId,
-                  );
+                  ref
+                      .read(mapRequestProvider.notifier)
+                      .showStationOnMap(station.stationId);
                 },
               ),
             ],

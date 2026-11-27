@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../providers/alerts_controller.dart';
 import '../providers/events_provider.dart';
 import '../services/roads_service.dart';
@@ -15,15 +17,16 @@ import '../widgets/base_tile_layer.dart';
 
 /// Full-screen map where the user taps roads to add/remove them from the
 /// watched set. Tapped point snaps to the nearest road's `ref`.
-class WatchedRoadsPickerScreen extends StatefulWidget {
+class WatchedRoadsPickerScreen extends ConsumerStatefulWidget {
   const WatchedRoadsPickerScreen({super.key});
 
   @override
-  State<WatchedRoadsPickerScreen> createState() =>
+  ConsumerState<WatchedRoadsPickerScreen> createState() =>
       _WatchedRoadsPickerScreenState();
 }
 
-class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
+class _WatchedRoadsPickerScreenState
+    extends ConsumerState<WatchedRoadsPickerScreen> {
   static const LatLng _center = LatLng(46.1512, 14.9955);
 
   /// All of Slovenia, so the first view shows every road that can be picked.
@@ -62,7 +65,7 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
   Future<void> _reload() async {
     // Quick taps start overlapping reloads; only the newest may win.
     final gen = ++_reloadGen;
-    final refs = context.read<AlertsController>().watchedRoads;
+    final refs = ref.read(alertsProvider).watchedRoads;
     try {
       final roads = await RoadsService.instance.roadsByRefs(refs);
       if (mounted && gen == _reloadGen) {
@@ -117,7 +120,8 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
       _showBanner('Tukaj ni ceste za spremljanje.', error: true);
       return;
     }
-    final wasWatched = context.read<AlertsController>().isWatched(ref);
+    // `ref` here is the road ref; the Riverpod ref is `this.ref`.
+    final wasWatched = this.ref.read(alertsProvider).isWatched(ref);
     await _toggle(ref);
     if (mounted) {
       _showBanner(wasWatched ? 'Odstranjeno: $ref' : 'Spremljam: $ref');
@@ -125,7 +129,7 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
   }
 
   Future<void> _toggle(String ref) async {
-    context.read<AlertsController>().toggleRoad(ref);
+    this.ref.read(alertsProvider.notifier).toggleRoad(ref);
     await _reload();
   }
 
@@ -133,8 +137,8 @@ class _WatchedRoadsPickerScreenState extends State<WatchedRoadsPickerScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final watched = context.watch<AlertsController>().watchedRoads;
-    final events = context.watch<EventsProvider>().events;
+    final watched = ref.watch(alertsProvider.select((s) => s.watchedRoads));
+    final events = ref.watch(eventsProvider.select((s) => s.items));
     final showExample = watched.isEmpty && _exampleLines.isNotEmpty;
     final bottomInset = math.max(
       AppTheme.bottomBarContentInset(context),

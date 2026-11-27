@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models/traffic_event.dart';
 
 /// Shared colour / icon / label mapping for traffic-event severities, used by
@@ -39,7 +40,8 @@ class EventVisuals {
     if (has('megl')) return Icons.foggy; // fog
     if (has('veter') || has('burj') || has('piš')) return Icons.air; // wind
     if (has('tovorn') || has('kamion')) return Icons.local_shipping; // trucks
-    if (has('pocival') || has('parkir')) return Icons.local_parking; // rest area
+    if (has('pocival') || has('parkir'))
+      return Icons.local_parking; // rest area
     if (has('priredit') || has('shod')) return Icons.celebration; // event
     if (has('zival')) return Icons.pets; // animals
     return icon(e.severity);
@@ -51,5 +53,4 @@ class EventVisuals {
     EventSeverity.roadworks => 'Dela na cesti',
     EventSeverity.other => 'Opozorilo',
   };
-
 }

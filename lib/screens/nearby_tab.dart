@@ -1,10 +1,12 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/traffic_event.dart';
 import '../providers/alerts_controller.dart';
 import '../providers/events_provider.dart';
+import '../providers/feed.dart';
 import '../services/prefs.dart';
 import '../theme/app_theme.dart';
 import '../widgets/event_sheet.dart';
@@ -13,16 +15,16 @@ import '../widgets/filter_sheet.dart';
 import 'watched_roads_picker_screen.dart';
 
 /// "V bližini": events on watched roads + events near the user's location, with
-/// foreground notifications handled by [AlertsController]. Supports the same
+/// foreground notifications handled by [AlertsNotifier]. Supports the same
 /// free-text search as the Dogodki tab.
-class NearbyTab extends StatefulWidget {
+class NearbyTab extends ConsumerStatefulWidget {
   const NearbyTab({super.key});
 
   @override
-  State<NearbyTab> createState() => _NearbyTabState();
+  ConsumerState<NearbyTab> createState() => _NearbyTabState();
 }
 
-class _NearbyTabState extends State<NearbyTab> {
+class _NearbyTabState extends ConsumerState<NearbyTab> {
   static const List<EventSeverity> _order = [
     EventSeverity.closed,
     EventSeverity.jam,
@@ -116,7 +118,7 @@ class _NearbyTabState extends State<NearbyTab> {
   }
 
   void _openFilters() {
-    final events = context.read<EventsProvider>().events;
+    final events = ref.read(eventsProvider).items;
     int count(EventSeverity s) => events.where((e) => e.severity == s).length;
     // Distinct causes present in the data, sorted, with counts.
     final causeCounts = <String, int>{};
@@ -270,17 +272,19 @@ class _NearbyTabState extends State<NearbyTab> {
               ),
             ),
             Expanded(
-              child: Consumer2<AlertsController, EventsProvider>(
-                builder: (context, alerts, eventsProvider, _) {
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final alerts = ref.watch(alertsProvider);
+                  final eventsFeed = ref.watch(eventsProvider);
                   final cs = Theme.of(context).colorScheme;
-                  // Event lists come from EventsProvider; without data yet,
+                  // Event lists come from eventsProvider; without data yet,
                   // "no events" would be a lie, so show its state instead.
                   final eventsLoading =
-                      eventsProvider.isLoading && !eventsProvider.hasData;
+                      eventsFeed.isLoading && !eventsFeed.hasData;
                   final eventsFailed =
                       !eventsLoading &&
-                      eventsProvider.error != null &&
-                      !eventsProvider.hasData;
+                      eventsFeed.error != null &&
+                      !eventsFeed.hasData;
                   final eventsUnavailable = eventsLoading || eventsFailed;
                   final distanceLimitMeters = _distanceLimitMeters;
                   // Without a fix every distance is unknown; filtering by it
@@ -323,7 +327,8 @@ class _NearbyTabState extends State<NearbyTab> {
                   final allEvents = alerts.events.where(_passes).toList();
 
                   return RefreshIndicator(
-                    onRefresh: eventsProvider.refresh,
+                    onRefresh: () =>
+                        ref.read(eventsProvider.notifier).refresh(),
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       keyboardDismissBehavior:
@@ -430,7 +435,7 @@ class _NearbyTabState extends State<NearbyTab> {
                             ),
                           )
                         else if (eventsFailed)
-                          _eventsError(context, eventsProvider)
+                          _eventsError(context, eventsFeed)
                         else if (alerts.locationEnabled && !hasFix)
                           _hint(cs, 'Pridobivanje lokacije…')
                         else if (alerts.locationEnabled)
@@ -604,7 +609,7 @@ class _NearbyTabState extends State<NearbyTab> {
     );
   }
 
-  Widget _eventsError(BuildContext context, EventsProvider provider) {
+  Widget _eventsError(BuildContext context, FeedState<TrafficEvent> provider) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -627,7 +632,7 @@ class _NearbyTabState extends State<NearbyTab> {
             ),
             const SizedBox(height: 12),
             AdaptiveButton.child(
-              onPressed: provider.refresh,
+              onPressed: () => ref.read(eventsProvider.notifier).refresh(),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -643,7 +648,7 @@ class _NearbyTabState extends State<NearbyTab> {
     );
   }
 
-  Widget _locationPrompt(BuildContext context, AlertsController alerts) {
+  Widget _locationPrompt(BuildContext context, AlertsState alerts) {
     final cs = Theme.of(context).colorScheme;
     final problem = alerts.locationProblemMessage;
     return Padding(
@@ -673,12 +678,15 @@ class _NearbyTabState extends State<NearbyTab> {
             const SizedBox(height: 12),
             if (problem != null && alerts.canOpenLocationSettings)
               AdaptiveButton(
-                onPressed: alerts.openLocationSettings,
+                onPressed: () =>
+                    ref.read(alertsProvider.notifier).openLocationSettings(),
                 label: 'Odpri nastavitve',
               )
             else
               AdaptiveButton(
-                onPressed: alerts.requesting ? () {} : alerts.enableLocation,
+                onPressed: alerts.requesting
+                    ? () {}
+                    : () => ref.read(alertsProvider.notifier).enableLocation(),
                 label: alerts.requesting ? 'Pridobivanje…' : 'Vklopi lokacijo',
               ),
           ],

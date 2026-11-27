@@ -6,11 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/rest_area.dart';
 import '../models/drsi_station.dart';
-import '../models/burja_station.dart';
 import '../models/traffic_camera.dart';
 import '../models/traffic_event.dart';
 import '../models/weather_station.dart';
@@ -41,14 +40,14 @@ import '../widgets/temperature_marker.dart';
 import '../widgets/webcam_thumbnail.dart';
 
 /// Map tab: shows every station as a coloured temperature marker over Slovenia.
-class MapTab extends StatefulWidget {
+class MapTab extends ConsumerStatefulWidget {
   const MapTab({super.key});
 
   @override
-  State<MapTab> createState() => MapTabState();
+  ConsumerState<MapTab> createState() => MapTabState();
 }
 
-class MapTabState extends State<MapTab> {
+class MapTabState extends ConsumerState<MapTab> {
   final MapController _mapController = MapController();
   final LayerHitNotifier<TrafficEvent> _eventRoadHitNotifier = ValueNotifier(
     null,
@@ -365,7 +364,7 @@ class MapTabState extends State<MapTab> {
       (_severities.length - _eventFilter.length);
 
   void _openMapFilters() {
-    final events = context.read<EventsProvider>().events;
+    final events = ref.read(eventsProvider).items;
     int count(EventSeverity s) => events.where((e) => e.severity == s).length;
 
     showFilterSheet(
@@ -491,7 +490,7 @@ class MapTabState extends State<MapTab> {
   /// Move the map to a station and open its sheet. Called via [mapTabKey]
   /// when the user taps "show on map" elsewhere.
   void focusStation(int stationId) {
-    final station = context.read<WeatherProvider>().byId(stationId);
+    final station = ref.read(weatherProvider).byId(stationId);
     if (station == null) return;
     if (_mapReady) {
       _mapController.move(station.position, 12.0);
@@ -517,9 +516,12 @@ class MapTabState extends State<MapTab> {
   Timer? _focusTimer;
 
   Future<void> _goToMyLocation() async {
-    final alerts = context.read<AlertsController>();
-    if (!alerts.locationEnabled) await alerts.enableLocation();
+    final notifier = ref.read(alertsProvider.notifier);
+    if (!ref.read(alertsProvider).locationEnabled) {
+      await notifier.enableLocation();
+    }
     if (!mounted) return;
+    final alerts = ref.read(alertsProvider);
     final problem = alerts.locationProblemMessage;
     if (problem != null) {
       final canFix = alerts.canOpenLocationSettings;
@@ -530,7 +532,7 @@ class MapTabState extends State<MapTab> {
         duration: const Duration(seconds: 6),
         action: canFix ? 'Nastavitve' : null,
         onActionPressed: canFix
-            ? () => unawaited(alerts.openLocationSettings())
+            ? () => unawaited(notifier.openLocationSettings())
             : null,
       );
       return;
@@ -552,12 +554,15 @@ class MapTabState extends State<MapTab> {
     // provider notifying (a GPS fix, a poll, a loading flag) rebuilt every
     // marker on the map.
     return AdaptiveScaffold(
-      body: Builder(
-        builder: (context) {
+      body: Consumer(
+        builder: (context, ref, _) {
           final cs = Theme.of(context).colorScheme;
           final isDark = Theme.of(context).brightness == Brightness.dark;
-          final showWeatherError = context.select<WeatherProvider, bool>(
-            (p) => p.error != null && !p.hasData,
+          // Message to show when loading failed with nothing to fall back on.
+          final weatherError = ref.watch(
+            weatherProvider.select(
+              (s) => s.error != null && !s.hasData ? s.error : null,
+            ),
           );
 
           return Stack(
@@ -672,8 +677,12 @@ class MapTabState extends State<MapTab> {
                   ),
                 ),
               ),
-              if (showWeatherError)
-                _errorBanner(context, context.read<WeatherProvider>()),
+              if (weatherError != null)
+                _errorBanner(
+                  context,
+                  weatherError,
+                  ref.read(weatherProvider.notifier).refresh,
+                ),
               SafeArea(
                 child: Align(
                   alignment: Alignment.topRight,
@@ -727,7 +736,11 @@ class MapTabState extends State<MapTab> {
     );
   }
 
-  Widget _errorBanner(BuildContext context, WeatherProvider provider) {
+  Widget _errorBanner(
+    BuildContext context,
+    String error,
+    Future<void> Function() onRetry,
+  ) {
     final cs = Theme.of(context).colorScheme;
     return Center(
       child: AdaptiveCard(
@@ -749,14 +762,14 @@ class MapTabState extends State<MapTab> {
             SizedBox(
               width: 240,
               child: Text(
-                provider.error ?? '',
+                error,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.onErrorContainer, fontSize: 12),
               ),
             ),
             const SizedBox(height: 12),
             AdaptiveButton.child(
-              onPressed: provider.refresh,
+              onPressed: onRetry,
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1227,16 +1240,16 @@ class _Memo<A, B, R> {
   }
 }
 
-class _DarsCamerasLayer extends StatefulWidget {
+class _DarsCamerasLayer extends ConsumerStatefulWidget {
   /// Thumbnail tier for the current zoom, or null for plain pins.
   final ThumbnailSize? thumbnailSize;
   const _DarsCamerasLayer({required this.thumbnailSize});
 
   @override
-  State<_DarsCamerasLayer> createState() => _DarsCamerasLayerState();
+  ConsumerState<_DarsCamerasLayer> createState() => _DarsCamerasLayerState();
 }
 
-class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
+class _DarsCamerasLayerState extends ConsumerState<_DarsCamerasLayer> {
   final _visibleMemo =
       _Memo<List<TrafficCamera>, List<WeatherStation>, List<TrafficCamera>>();
   // Markers are rebuilt only when the visible list, the thumbnail tier or
@@ -1248,19 +1261,11 @@ class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
 
   @override
   Widget build(BuildContext context) {
-    final cameras = context.select<CamerasProvider, List<TrafficCamera>>(
-      (p) => p.cameras,
-    );
-    final stations = context.select<WeatherProvider, List<WeatherStation>>(
-      (p) => p.stations,
-    );
+    final cameras = ref.watch(camerasProvider.select((s) => s.items));
+    final stations = ref.watch(weatherProvider.select((s) => s.items));
     // De-duplicating against weather-station cameras is O(cameras*stations);
     // do it once per data refresh, not on every build.
-    final visible = _visibleMemo(
-      cameras,
-      stations,
-      (_, st) => context.read<CamerasProvider>().visibleCameras(st),
-    );
+    final visible = _visibleMemo(cameras, stations, visibleCameras);
     final size = widget.thumbnailSize;
     final bucket = size != null ? webcamCacheBucket() : null;
     if (!identical(visible, _markersFor) ||
@@ -1318,22 +1323,20 @@ class _DarsCamerasLayerState extends State<_DarsCamerasLayer> {
   }
 }
 
-class _RestAreasLayer extends StatefulWidget {
+class _RestAreasLayer extends ConsumerStatefulWidget {
   final void Function(List<RestArea>) onTapGroup;
   const _RestAreasLayer({required this.onTapGroup});
 
   @override
-  State<_RestAreasLayer> createState() => _RestAreasLayerState();
+  ConsumerState<_RestAreasLayer> createState() => _RestAreasLayerState();
 }
 
-class _RestAreasLayerState extends State<_RestAreasLayer> {
+class _RestAreasLayerState extends ConsumerState<_RestAreasLayer> {
   final _memo = _Memo<List<RestArea>, Object?, List<_RestAreaGroup>>();
 
   @override
   Widget build(BuildContext context) {
-    final items = context.select<RestAreasProvider, List<RestArea>>(
-      (p) => p.items,
-    );
+    final items = ref.watch(restAreasProvider.select((s) => s.items));
     final groups = _memo(items, null, (a, _) => MapTabState._restAreaGroups(a));
     return MarkerLayer(
       markers: [
@@ -1353,14 +1356,12 @@ class _RestAreasLayerState extends State<_RestAreasLayer> {
   }
 }
 
-class _BurjaLayer extends StatelessWidget {
+class _BurjaLayer extends ConsumerWidget {
   const _BurjaLayer();
 
   @override
-  Widget build(BuildContext context) {
-    final items = context.select<BurjaProvider, List<BurjaStation>>(
-      (p) => p.items,
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final items = ref.watch(burjaProvider.select((s) => s.items));
     return MarkerLayer(
       markers: [
         for (final st in items)
@@ -1385,7 +1386,7 @@ class _BurjaLayer extends StatelessWidget {
 /// Weather stations and DRSI road stations in one layer. A road station
 /// within [_pairMeters] of a visible weather station is folded into that
 /// station's pin (one capsule, one tap, one sheet); the rest keep their own.
-class _StationsLayer extends StatefulWidget {
+class _StationsLayer extends ConsumerStatefulWidget {
   final bool showWeather;
   final bool showCameras;
   final bool showRoad;
@@ -1403,10 +1404,10 @@ class _StationsLayer extends StatefulWidget {
   });
 
   @override
-  State<_StationsLayer> createState() => _StationsLayerState();
+  ConsumerState<_StationsLayer> createState() => _StationsLayerState();
 }
 
-class _StationsLayerState extends State<_StationsLayer> {
+class _StationsLayerState extends ConsumerState<_StationsLayer> {
   static const double _pairMeters = 400;
 
   List<WeatherStation>? _forStations;
@@ -1450,11 +1451,9 @@ class _StationsLayerState extends State<_StationsLayer> {
 
   @override
   Widget build(BuildContext context) {
-    final stations = context.select<WeatherProvider, List<WeatherStation>>(
-      (p) => p.stations,
-    );
+    final stations = ref.watch(weatherProvider.select((s) => s.items));
     final roads = widget.showRoad
-        ? context.select<DrsiProvider, List<DrsiStation>>((p) => p.items)
+        ? ref.watch(drsiProvider.select((s) => s.items))
         : const <DrsiStation>[];
     final flags = '${widget.showWeather}${widget.showCameras}';
     if (!identical(stations, _forStations) ||
@@ -1516,7 +1515,7 @@ class _StationsLayerState extends State<_StationsLayer> {
   }
 }
 
-class _EventsLayer extends StatefulWidget {
+class _EventsLayer extends ConsumerStatefulWidget {
   /// Sorted severity indexes that pass the filter.
   final List<int> filterKey;
   final void Function(List<TrafficEvent>) onVisibleChanged;
@@ -1524,19 +1523,17 @@ class _EventsLayer extends StatefulWidget {
   const _EventsLayer({required this.filterKey, required this.onVisibleChanged});
 
   @override
-  State<_EventsLayer> createState() => _EventsLayerState();
+  ConsumerState<_EventsLayer> createState() => _EventsLayerState();
 }
 
-class _EventsLayerState extends State<_EventsLayer> {
+class _EventsLayerState extends ConsumerState<_EventsLayer> {
   List<TrafficEvent>? _source;
   String _filter = '';
   List<TrafficEvent> _visible = const [];
 
   @override
   Widget build(BuildContext context) {
-    final events = context.select<EventsProvider, List<TrafficEvent>>(
-      (p) => p.events,
-    );
+    final events = ref.watch(eventsProvider.select((s) => s.items));
     final filter = widget.filterKey.join(',');
     if (!identical(events, _source) || filter != _filter) {
       _source = events;
@@ -1566,16 +1563,18 @@ class _EventsLayerState extends State<_EventsLayer> {
   }
 }
 
-class _UserLocationLayer extends StatelessWidget {
+class _UserLocationLayer extends ConsumerWidget {
   const _UserLocationLayer();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Rebuilds on GPS updates without touching the other layers.
-    final pos = context.select<AlertsController, LatLng?>((a) {
-      final p = a.position;
-      return p == null ? null : LatLng(p.latitude, p.longitude);
-    });
+    final pos = ref.watch(
+      alertsProvider.select((a) {
+        final p = a.position;
+        return p == null ? null : LatLng(p.latitude, p.longitude);
+      }),
+    );
     if (pos == null) return const SizedBox.shrink();
     return MarkerLayer(
       markers: [

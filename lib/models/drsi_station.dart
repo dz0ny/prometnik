@@ -161,9 +161,8 @@ class DrsiStation {
 
 /// "26.11.2026 20:56" (local Slovenian time) → [DateTime], or null.
 DateTime? parseDrsiTime(String s) {
-  final m = RegExp(
-    r'^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})',
-  ).firstMatch(s.trim());
+  final m = RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})')
+      .firstMatch(s.trim());
   if (m == null) return null;
   int g(int i) => int.parse(m.group(i)!);
   return DateTime(g(3), g(2), g(1), g(4), g(5));

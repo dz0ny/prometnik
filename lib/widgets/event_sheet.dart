@@ -2,8 +2,8 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/traffic_camera.dart';
@@ -202,7 +202,7 @@ class _MetaRow extends StatelessWidget {
 /// has an affected-area bbox, the roads inside it are highlighted in the
 /// severity colour (the closest we can get to the affected route from open
 /// data — see RoadsService).
-class EventMiniMap extends StatefulWidget {
+class EventMiniMap extends ConsumerStatefulWidget {
   final TrafficEvent event;
   final double height;
   final double borderRadius;
@@ -219,10 +219,10 @@ class EventMiniMap extends StatefulWidget {
   });
 
   @override
-  State<EventMiniMap> createState() => _MiniMapState();
+  ConsumerState<EventMiniMap> createState() => _MiniMapState();
 }
 
-class _MiniMapState extends State<EventMiniMap> {
+class _MiniMapState extends ConsumerState<EventMiniMap> {
   List<RoadLine> _roads = const [];
 
   @override
@@ -252,7 +252,9 @@ class _MiniMapState extends State<EventMiniMap> {
       widget.onTap!();
       return;
     }
-    context.read<NavigationNotifier>().showLocationOnMap(widget.event.position);
+    ref
+        .read(mapRequestProvider.notifier)
+        .showLocationOnMap(widget.event.position);
     Navigator.of(context).pop();
   }
 
@@ -398,17 +400,18 @@ class _MiniMapState extends State<EventMiniMap> {
   }
 }
 
-class EventNearbyCamerasSection extends StatefulWidget {
+class EventNearbyCamerasSection extends ConsumerStatefulWidget {
   final TrafficEvent event;
 
   const EventNearbyCamerasSection({super.key, required this.event});
 
   @override
-  State<EventNearbyCamerasSection> createState() =>
+  ConsumerState<EventNearbyCamerasSection> createState() =>
       _EventNearbyCamerasSectionState();
 }
 
-class _EventNearbyCamerasSectionState extends State<EventNearbyCamerasSection> {
+class _EventNearbyCamerasSectionState
+    extends ConsumerState<EventNearbyCamerasSection> {
   static const double _fallbackRadiusMeters = 8000;
 
   /// Nearest cameras shown before "Prikaži vse".
@@ -418,14 +421,11 @@ class _EventNearbyCamerasSectionState extends State<EventNearbyCamerasSection> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final stations = context.watch<WeatherProvider>().stations;
-    final cameras =
-        context
-            .watch<CamerasProvider>()
-            .visibleCameras(stations)
-            .where(_isNearby)
-            .toList()
-          ..sort(_compareByDistance);
+    final stations = ref.watch(weatherProvider.select((s) => s.items));
+    final cameras = visibleCameras(
+      ref.watch(camerasProvider.select((s) => s.items)),
+      stations,
+    ).where(_isNearby).toList()..sort(_compareByDistance);
     final shown = _showAll ? cameras : cameras.take(_collapsedCount).toList();
     final canToggle = cameras.length > _collapsedCount;
 

@@ -2,12 +2,13 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/traffic_camera.dart';
 import '../models/weather_station.dart';
 import '../providers/cameras_provider.dart';
 import '../providers/favorites_provider.dart';
+import '../providers/feed.dart';
 import '../providers/weather_provider.dart';
 import '../router/route_names.dart';
 import '../services/prefs.dart';
@@ -26,14 +27,14 @@ enum _KindFilter { all, weather, camera }
 
 /// List of all stations with a webcam thumbnail and temperature. Supports
 /// text search, kind filtering, and a favourites-only view.
-class ListTab extends StatefulWidget {
+class ListTab extends ConsumerStatefulWidget {
   const ListTab({super.key});
 
   @override
-  State<ListTab> createState() => _ListTabState();
+  ConsumerState<ListTab> createState() => _ListTabState();
 }
 
-class _ListTabState extends State<ListTab> {
+class _ListTabState extends ConsumerState<ListTab> {
   String _query = '';
   bool _onlyFavorites = false;
   bool _showDarsCameras = true;
@@ -44,13 +45,11 @@ class _ListTabState extends State<ListTab> {
   Future<void> _onRefresh() async {
     setState(() => _refreshKey = DateTime.now().millisecondsSinceEpoch);
     await Future.wait([
-      context.read<WeatherProvider>().refresh(),
-      context.read<CamerasProvider>().refresh(),
+      ref.read(weatherProvider.notifier).refresh(),
+      ref.read(camerasProvider.notifier).refresh(),
     ]);
   }
 
-  FavoritesProvider? _favs;
-  bool _favInitDone = false;
   int _lastFavCount = 0;
 
   @override
@@ -61,6 +60,13 @@ class _ListTabState extends State<ListTab> {
     _showDarsCameras = Prefs.getBool('list.darsCameras', true);
     final ki = Prefs.getInt('list.kind', 0);
     _kind = _KindFilter.values[ki.clamp(0, _KindFilter.values.length - 1)];
+    final favs = ref.read(favoritesProvider);
+    _lastFavCount = favs.length;
+    // Default to the favourites view if the user has some — but only when
+    // they haven't set an explicit preference before.
+    if (!Prefs.has('list.onlyFavorites') && favs.isNotEmpty) {
+      _onlyFavorites = true;
+    }
   }
 
   void _saveListFilters() {
@@ -69,30 +75,10 @@ class _ListTabState extends State<ListTab> {
     Prefs.setInt('list.kind', _kind.index);
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final favs = context.read<FavoritesProvider>();
-    if (!identical(_favs, favs)) {
-      _favs?.removeListener(_onFavoritesChanged);
-      _favs = favs..addListener(_onFavoritesChanged);
-    }
-    if (!_favInitDone) {
-      _favInitDone = true;
-      _lastFavCount = favs.count;
-      // Default to the favourites view if the user has some — but only when
-      // they haven't set an explicit preference before.
-      if (!Prefs.has('list.onlyFavorites') && favs.hasAny) {
-        _onlyFavorites = true;
-      }
-    }
-  }
-
-  /// Auto-switch to the favourites view the moment the first favourite is added
-  /// (incl. when persisted favourites finish loading), and back to the full
-  /// list when the last one is removed.
-  void _onFavoritesChanged() {
-    final count = _favs?.count ?? 0;
+  /// Auto-switch to the favourites view the moment the first favourite is added,
+  /// and back to the full list when the last one is removed.
+  void _onFavoritesChanged(Set<int> favs) {
+    final count = favs.length;
     if (_lastFavCount == 0 && count > 0 && !_onlyFavorites) {
       setState(() => _onlyFavorites = true);
       _saveListFilters();
@@ -103,17 +89,11 @@ class _ListTabState extends State<ListTab> {
     _lastFavCount = count;
   }
 
-  @override
-  void dispose() {
-    _favs?.removeListener(_onFavoritesChanged);
-    super.dispose();
-  }
-
-  bool _matches(WeatherStation s, FavoritesProvider favs) {
+  bool _matches(WeatherStation s, Set<int> favs) {
     if (_query.isNotEmpty && !s.name.toLowerCase().contains(_query)) {
       return false;
     }
-    if (_onlyFavorites && !favs.isFavorite(s.stationId)) return false;
+    if (_onlyFavorites && !favs.contains(s.stationId)) return false;
     switch (_kind) {
       case _KindFilter.weather:
         if (!s.hasWeather) return false;
@@ -139,7 +119,7 @@ class _ListTabState extends State<ListTab> {
   List<({String title, List<Object> items})> _buildGroups(
     List<WeatherStation> stations,
     List<TrafficCamera> cameras,
-    FavoritesProvider favs,
+    Set<int> favs,
   ) {
     final groups = <({String title, List<Object> items})>[];
 
@@ -151,7 +131,7 @@ class _ListTabState extends State<ListTab> {
     }
 
     final favStations = stations
-        .where((s) => favs.isFavorite(s.stationId))
+        .where((s) => favs.contains(s.stationId))
         .toList();
     if (favStations.isNotEmpty) {
       groups.add((
@@ -182,6 +162,7 @@ class _ListTabState extends State<ListTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(favoritesProvider, (_, next) => _onFavoritesChanged(next));
     // No app bar: the "Postaje" tab already labels this screen. Search and
     // filters live at the top of the body instead.
     return AdaptiveScaffold(
@@ -218,8 +199,10 @@ class _ListTabState extends State<ListTab> {
             ),
             const SizedBox(height: 4),
             Expanded(
-              child: Consumer2<WeatherProvider, FavoritesProvider>(
-                builder: (context, provider, favs, _) {
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final provider = ref.watch(weatherProvider);
+                  final favs = ref.watch(favoritesProvider);
                   if (provider.isLoading && !provider.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
@@ -227,7 +210,7 @@ class _ListTabState extends State<ListTab> {
                     return _error(context, provider);
                   }
 
-                  final stations = provider.stations
+                  final stations = provider.items
                       .where((s) => _matches(s, favs))
                       .toList();
                   // DARS cameras join the list unless filtered out.
@@ -235,11 +218,10 @@ class _ListTabState extends State<ListTab> {
                       (_showDarsCameras &&
                           !_onlyFavorites &&
                           _kind != _KindFilter.weather)
-                      ? context
-                            .watch<CamerasProvider>()
-                            .visibleCameras(provider.stations)
-                            .where(_matchesCamera)
-                            .toList()
+                      ? visibleCameras(
+                          ref.watch(camerasProvider.select((s) => s.items)),
+                          provider.items,
+                        ).where(_matchesCamera).toList()
                       : <TrafficCamera>[];
 
                   if (stations.isEmpty && cameras.isEmpty) {
@@ -282,7 +264,7 @@ class _ListTabState extends State<ListTab> {
       (_showDarsCameras ? 0 : 1);
 
   void _openFilters() {
-    final favCount = context.read<FavoritesProvider>().count;
+    final favCount = ref.read(favoritesProvider).length;
 
     showFilterSheet(
       context: context,
@@ -386,7 +368,7 @@ class _ListTabState extends State<ListTab> {
     );
   }
 
-  Widget _error(BuildContext context, WeatherProvider provider) {
+  Widget _error(BuildContext context, FeedState<WeatherStation> provider) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -398,7 +380,7 @@ class _ListTabState extends State<ListTab> {
             Text(provider.error ?? '', textAlign: TextAlign.center),
             const SizedBox(height: 12),
             AdaptiveButton.child(
-              onPressed: provider.refresh,
+              onPressed: () => ref.read(weatherProvider.notifier).refresh(),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -510,18 +492,19 @@ class _SectionCard extends StatelessWidget {
 /// A modern station row: rounded webcam thumbnail, name + condition, a coloured
 /// temperature pill, a favourite toggle, and a disclosure chevron. Transparent
 /// so the enclosing section card provides the background.
-class _StationRow extends StatelessWidget {
+class _StationRow extends ConsumerWidget {
   final WeatherStation station;
   final int refreshKey;
 
   const _StationRow({required this.station, required this.refreshKey});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final temp = station.temperatureC;
-    final favs = context.watch<FavoritesProvider>();
-    final isFav = favs.isFavorite(station.stationId);
+    final isFav = ref.watch(
+      favoritesProvider.select((s) => s.contains(station.stationId)),
+    );
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -598,7 +581,9 @@ class _StationRow extends StatelessWidget {
                     : cs.onSurfaceVariant,
                 style: AdaptiveButtonStyle.plain,
                 minSize: const Size(_kTrailingActionWidth, 44),
-                onPressed: () => favs.toggle(station.stationId),
+                onPressed: () => ref
+                    .read(favoritesProvider.notifier)
+                    .toggle(station.stationId),
               ),
             ),
             const _Chevron(),
@@ -611,16 +596,15 @@ class _StationRow extends StatelessWidget {
 
 /// A full-width webcam hero for a favourite station: large image with the name
 /// and temperature overlaid, plus a star to unfavourite. Tap opens the detail.
-class _FavoriteHeroCard extends StatelessWidget {
+class _FavoriteHeroCard extends ConsumerWidget {
   final WeatherStation station;
   final int refreshKey;
 
   const _FavoriteHeroCard({required this.station, required this.refreshKey});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final temp = station.temperatureC;
-    final favs = context.watch<FavoritesProvider>();
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -655,7 +639,9 @@ class _FavoriteHeroCard extends StatelessWidget {
                   excludeSemantics: true,
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => favs.toggle(station.stationId),
+                    onTap: () => ref
+                        .read(favoritesProvider.notifier)
+                        .toggle(station.stationId),
                     // 48pt hit area around the 32pt visible badge.
                     child: Padding(
                       padding: const EdgeInsets.all(8),

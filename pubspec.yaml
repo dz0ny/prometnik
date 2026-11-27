@@ -29,8 +29,8 @@ dependencies:
   # Routing
   go_router: any
 
-  # State management
-  provider: any
+  # State management + DI
+  flutter_riverpod: ^3.5.0
 
   # Utilities
   intl: any
