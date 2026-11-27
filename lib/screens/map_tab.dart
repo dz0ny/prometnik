@@ -1478,7 +1478,7 @@ class _StationsLayerState extends ConsumerState<_StationsLayer> {
             height: 40,
             child: DrsiMarker(
               station: road,
-              onTap: () => showDrsiSheet(context, road),
+              onTap: () => showRoadStationSheet(context, road),
             ),
           ),
       ],

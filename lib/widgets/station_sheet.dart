@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/drsi_station.dart';
+import '../models/weather_station.dart';
+import '../providers/drsi_provider.dart';
 import '../providers/weather_provider.dart';
 import 'app_sheet.dart';
+import 'drsi_sheet.dart' show drsiRiskColor;
 import 'interactive_webcam.dart';
 import 'station_overview.dart';
 import 'weather_details.dart';
-import '../models/drsi_station.dart';
-import '../providers/drsi_provider.dart';
 
 /// Opens the station detail sheet for [stationId].
 void showStationSheet(BuildContext context, int stationId, {String? roadId}) {
@@ -17,22 +19,52 @@ void showStationSheet(BuildContext context, int stationId, {String? roadId}) {
   );
 }
 
+/// Opens the same sheet for a DRSI road station with no weather station
+/// next to it.
+void showRoadStationSheet(BuildContext context, DrsiStation road) {
+  showAppSheet<void>(context, builder: (_) => StationSheet(roadId: road.id));
+}
+
 /// Detail sheet shown when a weather/camera pin is tapped: station name and
 /// update time in the pinned header, the live webcam (tap or the fullscreen
 /// button = fullscreen; the refresh button or a long-press = refresh) and the
 /// full weather reading below.
 class StationSheet extends ConsumerWidget {
-  final int stationId;
+  /// The weather station; null for a lone DRSI road station ([roadId]).
+  final int? stationId;
 
   /// Id of a DRSI road station at the same spot; its road-surface data is
   /// shown in the same sheet.
   final String? roadId;
 
-  const StationSheet({super.key, required this.stationId, this.roadId});
+  const StationSheet({super.key, this.stationId, this.roadId})
+    : assert(stationId != null || roadId != null);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final station = ref.watch(weatherProvider.select((s) => s.byId(stationId)));
+    final road = roadId == null
+        ? null
+        : ref.watch(
+            drsiProvider.select<DrsiStation?>((p) {
+              for (final s in p.items) {
+                if (s.id == roadId) return s;
+              }
+              return null;
+            }),
+          );
+    final id = stationId;
+    final station = id != null
+        ? ref.watch(weatherProvider.select((s) => s.byId(id)))
+        : road == null
+        ? null
+        // A lone road station: its camera and no air reading.
+        : WeatherStation(
+            stationId: -1,
+            name: road.name,
+            position: road.position,
+            cameraLink: road.webcamUrl,
+            weather: null,
+          );
     if (station == null) {
       return const AppSheet(
         title: 'Postaja',
@@ -46,17 +78,8 @@ class StationSheet extends ConsumerWidget {
       );
     }
     final cs = Theme.of(context).colorScheme;
-    final updated = station.weather?.timestamp;
-    final road = roadId == null
-        ? null
-        : ref.watch(
-            drsiProvider.select<DrsiStation?>((p) {
-              for (final s in p.items) {
-                if (s.id == roadId) return s;
-              }
-              return null;
-            }),
-          );
+    final roadOnly = id == null;
+    final updated = roadOnly ? road?.measuredAt : station.weather?.timestamp;
 
     return AppSheet(
       title: station.name.isEmpty ? 'Postaja' : station.name,
@@ -65,16 +88,19 @@ class StationSheet extends ConsumerWidget {
       subtitle: updated == null
           ? null
           : 'Posodobljeno: ${WeatherFormat.timestamp(updated)}',
-      leading: Icon(
-        station.hasWeather ? Icons.thermostat : Icons.videocam,
-        color: cs.primary,
-      ),
+      leading: roadOnly
+          ? Icon(Icons.add_road, color: drsiRiskColor(road!.risk))
+          : Icon(
+              station.hasWeather ? Icons.thermostat : Icons.videocam,
+              color: cs.primary,
+            ),
       children: [
         if (station.cameraLink.isNotEmpty) ...[
           InteractiveWebcam(
             station: station,
             autoRefresh: const Duration(seconds: 60),
-            showHistory: true,
+            // The worker keeps 24-hour history for weather-station cameras.
+            showHistory: !roadOnly,
           ),
           const SizedBox(height: 16),
         ],

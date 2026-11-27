@@ -1,11 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:promet/models/drsi_station.dart';
+import 'package:promet/providers/drsi_provider.dart';
+import 'package:promet/providers/feed.dart';
 import 'package:promet/services/drsi_service.dart';
 import 'package:promet/widgets/drsi_sheet.dart';
 import 'package:promet/widgets/event_sheet.dart' show eventRoadLabel;
+import 'package:promet/widgets/station_sheet.dart';
 import 'package:promet/widgets/weather_details.dart' show WeatherFormat;
 
 void main() {
@@ -96,23 +100,30 @@ void main() {
   });
 
   testWidgets('marker and sheet render without overflow', (tester) async {
+    // Tall window so the whole (lazily built) sheet body is on screen.
+    tester.view.physicalSize = const Size(400, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final station = parseDrsiTable(fixture).first;
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => Column(
-              children: [
-                SizedBox(
-                  width: 56,
-                  height: 26,
-                  child: DrsiMarker(station: station, onTap: () {}),
-                ),
-                TextButton(
-                  onPressed: () => showDrsiSheet(context, station),
-                  child: const Text('open'),
-                ),
-              ],
+      _withStation(
+        station,
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Column(
+                children: [
+                  SizedBox(
+                    width: 56,
+                    height: 26,
+                    child: DrsiMarker(station: station, onTap: () {}),
+                  ),
+                  TextButton(
+                    onPressed: () => showRoadStationSheet(context, station),
+                    child: const Text('open'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -122,7 +133,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Kranj - most'), findsOneWidget);
-    expect(find.text('Poledica'), findsOneWidget);
+    expect(find.textContaining('Poledica', findRichText: true), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -133,17 +144,20 @@ void main() {
     addTearDown(tester.view.reset);
     final station = parseDrsiTable(fixture).first;
     await tester.pumpWidget(
-      MaterialApp(
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: const TextScaler.linear(2)),
-          child: child!,
-        ),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showDrsiSheet(context, station),
-              child: const Text('open'),
+      _withStation(
+        station,
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showRoadStationSheet(context, station),
+                child: const Text('open'),
+              ),
             ),
           ),
         ),
@@ -172,4 +186,18 @@ void main() {
     expect(eventRoadLabel('R3-651'), 'R3-651');
     expect(eventRoadLabel('Celovška cesta'), 'Celovška cesta');
   });
+}
+
+/// The road-station sheet reads its station from [drsiProvider].
+Widget _withStation(DrsiStation station, Widget child) => ProviderScope(
+  overrides: [drsiProvider.overrideWith(() => _FixedDrsi(station))],
+  child: child,
+);
+
+class _FixedDrsi extends DrsiFeed {
+  _FixedDrsi(this.station);
+  final DrsiStation station;
+
+  @override
+  FeedState<DrsiStation> build() => FeedState(items: [station]);
 }

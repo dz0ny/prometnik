@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/drsi_station.dart';
 import '../theme/app_theme.dart';
-import 'app_sheet.dart';
 import 'weather_details.dart' show WeatherFormat;
-import 'live_webcam_image.dart';
 
 const _riskColors = <RoadRisk, Color>{
   RoadRisk.ok: Color(0xFF43A047),
@@ -39,10 +37,6 @@ String _wholeDegrees(double t) {
 }
 
 String _t(double? v) => WeatherFormat.temp(v);
-
-void showDrsiSheet(BuildContext context, DrsiStation station) {
-  showAppSheet<void>(context, builder: (_) => _DrsiSheet(station: station));
-}
 
 /// Map pin: road surface temperature on a pill tinted by [RoadRisk].
 class DrsiMarker extends StatelessWidget {
@@ -102,61 +96,6 @@ class DrsiMarker extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _DrsiSheet extends StatelessWidget {
-  final DrsiStation station;
-
-  const _DrsiSheet({required this.station});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final risk = station.risk;
-    final color = drsiRiskColor(risk);
-    final at = station.measuredAt;
-    final camUrl = station.cameraUrlWithBuster(
-      DateTime.now().millisecondsSinceEpoch ~/ 60000,
-    );
-
-    return AppSheet(
-      title: station.name.isEmpty ? 'Cestna postaja' : station.name,
-      subtitle: [
-        'Cestna postaja DRSI',
-        if (at != null) WeatherFormat.timestamp(at),
-      ].join(' · '),
-      leading: Icon(Icons.add_road, color: color),
-      children: [
-        DrsiRoadSection(station: station),
-        if (camUrl.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: ColoredBox(
-                color: Colors.black,
-                child: LiveWebcamImage(
-                  url: camUrl,
-                  fit: BoxFit.contain,
-                  placeholder: (_) =>
-                      const Center(child: CircularProgressIndicator.adaptive()),
-                  errorWidget: (_) => const Center(
-                    child: Icon(Icons.videocam_off, color: Colors.white54),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: 8),
-        Text(
-          'Vir: Direkcija RS za infrastrukturo (CVIS)',
-          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-        ),
-      ],
     );
   }
 }
