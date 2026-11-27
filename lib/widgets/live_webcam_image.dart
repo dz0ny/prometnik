@@ -275,7 +275,6 @@ class _WebcamHistoryStripState extends State<WebcamHistoryStrip> {
   Widget build(BuildContext context) {
     if (_history.isEmpty) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
-    final entries = _history.reversed.toList(); // newest first
     final selectedAt = widget.selected?.at;
     final liveSelected = widget.selected == null && _loadingAt == null;
     final liveBytes = WebcamStore.instance.latestSync(widget.url)?.bytes;

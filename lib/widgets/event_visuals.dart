@@ -40,8 +40,9 @@ class EventVisuals {
     if (has('megl')) return Icons.foggy; // fog
     if (has('veter') || has('burj') || has('piš')) return Icons.air; // wind
     if (has('tovorn') || has('kamion')) return Icons.local_shipping; // trucks
-    if (has('pocival') || has('parkir'))
+    if (has('pocival') || has('parkir')) {
       return Icons.local_parking; // rest area
+    }
     if (has('priredit') || has('shod')) return Icons.celebration; // event
     if (has('zival')) return Icons.pets; // animals
     return icon(e.severity);
