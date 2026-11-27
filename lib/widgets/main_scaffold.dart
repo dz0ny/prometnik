@@ -11,10 +11,12 @@ import '../providers/events_provider.dart';
 import '../providers/feed.dart';
 import '../providers/rest_areas_provider.dart';
 import '../providers/travel_times_provider.dart';
+import '../providers/update_provider.dart';
 import '../providers/weather_provider.dart';
 import '../router/app_router.dart';
 import '../router/navigation_notifier.dart';
 import '../screens/about_screen.dart';
+import 'update_banner.dart';
 
 /// Main scaffold with bottom navigation for the app shell.
 class MainScaffold extends ConsumerStatefulWidget {
@@ -29,6 +31,17 @@ class MainScaffold extends ConsumerStatefulWidget {
 class _MainScaffoldState extends ConsumerState<MainScaffold> {
   int _tabTapCount = 0;
   DateTime? _lastTabTap;
+
+  @override
+  void initState() {
+    super.initState();
+    // Android APK builds look for a newer GitHub release once per start.
+    if (selfUpdates) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.read(updateProvider.notifier).check();
+      });
+    }
+  }
 
   /// Cross-tab "show on map" requests: switch to the map tab, then focus.
   void _handleMapRequest(MapRequest? request) {
@@ -112,7 +125,14 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     return AdaptiveScaffold(
       // Keep the iOS 26 native tab bar at full size (don't shrink on scroll).
       minimizeBehavior: TabBarMinimizeBehavior.never,
-      body: widget.navigationShell,
+      body: selfUpdates
+          ? Stack(
+              children: [
+                Positioned.fill(child: widget.navigationShell),
+                const UpdateBanner(),
+              ],
+            )
+          : widget.navigationShell,
       bottomNavigationBar: AdaptiveBottomNavigationBar(
         selectedIndex: index,
         onTap: _handleTabTap,

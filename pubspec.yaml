@@ -43,6 +43,7 @@ dependencies:
   cupertino_icons: ^2.0.0
   geolocator: ^14.0.1
   flutter_local_notifications: ^23.0.4
+  ota_update: ^7.1.0
 
 dev_dependencies:
   flutter_test:

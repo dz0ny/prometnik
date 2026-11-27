@@ -69,11 +69,11 @@ build-no-bump: ## Build release APK without bumping version
 	@ls -lh $(BUILD_DIR)/app-release.apk
 
 bundle: bump ## Build release App Bundle (auto-bumps version)
-	flutter build appbundle --release
+	flutter build appbundle --release --dart-define=PROMET_PLAY_DISTRIBUTION=true
 	@ls -lh $(BUNDLE_DIR)/app-release.aab
 
 bundle-no-bump: ## Build release App Bundle without bumping version
-	flutter build appbundle --release
+	flutter build appbundle --release --dart-define=PROMET_PLAY_DISTRIBUTION=true
 	@ls -lh $(BUNDLE_DIR)/app-release.aab
 
 clean: ## Clean build artifacts

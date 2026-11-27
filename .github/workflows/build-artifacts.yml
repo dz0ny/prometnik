@@ -65,7 +65,7 @@ jobs:
         run: flutter build apk --release
 
       - name: Build Play AAB
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --dart-define=PROMET_PLAY_DISTRIBUTION=true
 
       - name: Prepare Android artifacts
         run: |
