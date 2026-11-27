@@ -19,14 +19,11 @@ const RUN_BUDGET_MS = 40000;
 // The camera hosts are slow and stall in bursts; the cron can afford to wait
 // much longer than a viewer's request.
 const CRON_FETCH_TIMEOUT_MS = 25000;
-const CAMERAS_KEY = 'meta/cameras.json';
+const CAMERAS_KEY = 'meta/station-cameras.json';
 
-const CAMERA_FEEDS = [
-  // DARS traffic cameras (GeoJSON, properties.Image).
-  'https://www.promet.si/dc/agg.kamere.v2',
-  // Weather-station cameras (JSON with "cameraLink" fields).
-  'https://www.ceste.si/Vremenske/Vreme/KamereInVreme',
-];
+// Hourly history only for weather-station cameras: they sit on the roads
+// people check for conditions. The ~550 DARS traffic cameras are left out.
+const CAMERA_FEEDS = ['https://www.ceste.si/Vremenske/Vreme/KamereInVreme'];
 
 /** Stable short id for a camera URL (hex SHA-256 prefix). */
 export async function cameraId(camUrl) {

@@ -11,6 +11,7 @@ void showWebcamViewer(
   required String Function(int buster) urlFor,
   required int initialKey,
   WebcamFrame? initialSnapshot,
+  bool showHistory = true,
 }) {
   Navigator.of(context, rootNavigator: true).push(
     PageRouteBuilder<void>(
@@ -24,6 +25,7 @@ void showWebcamViewer(
         urlFor: urlFor,
         initialKey: initialKey,
         initialSnapshot: initialSnapshot,
+        showHistory: showHistory,
       ),
       transitionsBuilder: (_, animation, _, child) =>
           FadeTransition(opacity: animation, child: child),
@@ -40,12 +42,16 @@ class WebcamViewer extends StatefulWidget {
   final int initialKey;
   final WebcamFrame? initialSnapshot;
 
+  /// The 24-hour strip (weather-station cameras only).
+  final bool showHistory;
+
   const WebcamViewer({
     super.key,
     required this.title,
     required this.urlFor,
     required this.initialKey,
     this.initialSnapshot,
+    this.showHistory = true,
   });
 
   @override
@@ -212,24 +218,25 @@ class _WebcamViewerState extends State<WebcamViewer>
               ),
             ),
             // 24-hour history.
-            _Chrome(
-              visible: _chrome,
-              alignment: Alignment.bottomCenter,
-              gradientBegin: Alignment.bottomCenter,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 24, 12, 8),
-                  child: WebcamHistoryStrip(
-                    url: url,
-                    selected: snapshot,
-                    refreshToken: _liveAt,
-                    framed: false,
-                    onSelect: (f) => setState(() => _snapshot = f),
+            if (widget.showHistory)
+              _Chrome(
+                visible: _chrome,
+                alignment: Alignment.bottomCenter,
+                gradientBegin: Alignment.bottomCenter,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 24, 12, 8),
+                    child: WebcamHistoryStrip(
+                      url: url,
+                      selected: snapshot,
+                      refreshToken: _liveAt,
+                      framed: false,
+                      onSelect: (f) => setState(() => _snapshot = f),
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

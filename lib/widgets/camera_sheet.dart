@@ -58,6 +58,7 @@ class _CameraSheetState extends State<CameraSheet> {
       urlFor: widget.camera.imageUrlWithBuster,
       initialKey: _key,
       initialSnapshot: _snapshot,
+      showHistory: false,
     );
   }
 
@@ -143,12 +144,8 @@ class _CameraSheetState extends State<CameraSheet> {
             ),
           ),
         ),
-        WebcamHistoryStrip(
-          url: cam.imageUrlWithBuster(_key),
-          selected: _snapshot,
-          refreshToken: _liveAt,
-          onSelect: (f) => setState(() => _snapshot = f),
-        ),
+        // No 24-hour history here: only weather-station cameras are
+        // captured hourly.
         if (cam.description.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(
