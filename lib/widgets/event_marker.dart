@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/traffic_event.dart';
 import 'event_visuals.dart';
+import 'temperature_marker.dart' show MapPinStyle;
 
-/// A circular map pin for a traffic event, coloured by severity with a white
-/// outline and the severity icon. Place with `alignment: Alignment.center`.
+/// A circular map pin for a traffic event, coloured by severity with the
+/// shared white pin rim and the severity icon. Place with `alignment: Alignment.center`.
 class EventMarker extends StatelessWidget {
   /// Diameter of the visible pin.
   static const double pinSize = 28;
@@ -40,17 +41,16 @@ class EventMarker extends StatelessWidget {
             child: Container(
               width: pinSize,
               height: pinSize,
+              // Same rim, shadow and gradient as the other map pins.
               decoration: BoxDecoration(
-                color: color,
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [MapPinStyle.lighten(color, 0.08), color],
+                ),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 1.5),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black38,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(color: Colors.white, width: MapPinStyle.rim),
+                boxShadow: MapPinStyle.shadow,
               ),
               child: Icon(
                 EventVisuals.causeIcon(event),

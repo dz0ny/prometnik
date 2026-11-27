@@ -9,6 +9,7 @@ import 'weather_details.dart' show WeatherFormat;
 import 'webcam_image.dart';
 import 'sheet_snack.dart';
 import 'live_webcam_image.dart';
+import 'shimmer_box.dart';
 import 'webcam_viewer.dart';
 import '../services/webcam_store.dart';
 
@@ -62,7 +63,8 @@ class _OverlayIconButton extends StatelessWidget {
 ///  - optionally auto-refreshes on an interval.
 ///
 /// When [overlayName] is provided, the station name (and optional temperature
-/// badge) are drawn over a bottom gradient scrim.
+/// badge) are drawn over a bottom gradient scrim, making the frame a hero
+/// image. Until the first frame arrives a shimmer skeleton is shown.
 class InteractiveWebcam extends StatefulWidget {
   final WeatherStation station;
   final double aspectRatio;
@@ -70,6 +72,9 @@ class InteractiveWebcam extends StatefulWidget {
   final Duration? autoRefresh;
   final String? overlayName;
   final double? overlayTemp;
+
+  /// How the frame fills the box; heroes crop with [BoxFit.cover].
+  final BoxFit fit;
 
   /// Whether to show a visible refresh button next to the fullscreen one.
   final bool showRefreshButton;
@@ -85,6 +90,7 @@ class InteractiveWebcam extends StatefulWidget {
     this.autoRefresh,
     this.overlayName,
     this.overlayTemp,
+    this.fit = BoxFit.contain,
     this.showRefreshButton = true,
     this.showHistory = false,
   });
@@ -142,6 +148,15 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
     );
   }
 
+  void _onFrame(WebcamFrame f) {
+    if (_liveAt != f.at && mounted) {
+      // Defer: onFrame can fire during the child's build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _liveAt = f.at);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final image = _buildImage(context);
@@ -176,20 +191,22 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
             children: [
               ColoredBox(
                 color: Colors.black,
-                child: WebcamImage(
-                  station: widget.station,
-                  refreshKey: _key,
-                  fit: BoxFit.contain,
-                  snapshot: _snapshot,
-                  onFrame: (f) {
-                    if (_liveAt != f.at && mounted) {
-                      // Defer: onFrame can fire during the child's build.
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) setState(() => _liveAt = f.at);
-                      });
-                    }
-                  },
-                ),
+                child: hasCamera
+                    ? LiveWebcamImage(
+                        url: widget.station.cameraUrlWithBuster(_key),
+                        fit: widget.fit,
+                        width: double.infinity,
+                        snapshot: _snapshot,
+                        onFrame: _onFrame,
+                        placeholder: (_) => const ShimmerBox(),
+                        errorWidget: (_) => const _ImageUnavailable(),
+                      )
+                    // No camera: WebcamImage's "Ni kamere" placeholder.
+                    : WebcamImage(
+                        station: widget.station,
+                        refreshKey: _key,
+                        fit: BoxFit.contain,
+                      ),
               ),
               if (_snapshot != null)
                 Positioned(
@@ -198,13 +215,19 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                   child: WebcamSnapshotBadge(frame: _snapshot!),
                 ),
               if (hasOverlay)
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      stops: [0.55, 1.0],
-                      colors: [Colors.transparent, Colors.black54],
+                const IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: [0.45, 0.75, 1.0],
+                        colors: [
+                          Colors.transparent,
+                          Color(0x59000000),
+                          Color(0xB3000000),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -236,62 +259,117 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                   left: 14,
                   right: 14,
                   bottom: 12,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.overlayName!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                            shadows: [
-                              Shadow(blurRadius: 6, color: Colors.black87),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (widget.overlayTemp != null) ...[
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.temperatureColor(
-                              widget.overlayTemp,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: const [
-                              BoxShadow(blurRadius: 6, color: Colors.black54),
-                            ],
-                          ),
-                          child: Text(
-                            WeatherFormat.temp(widget.overlayTemp),
-                            style: TextStyle(
-                              // Cold colours are dark violet/blue: pick a
-                              // readable foreground from the background.
-                              color:
-                                  AppTheme.temperatureColor(widget.overlayTemp)
-                                          .computeLuminance() <
-                                      0.45
-                                  ? Colors.white
-                                  : Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  child: _HeroCaption(
+                    name: widget.overlayName!,
+                    temp: widget.overlayTemp,
                   ),
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Place name and current temperature drawn over the bottom of a hero
+/// webcam image.
+class _HeroCaption extends StatelessWidget {
+  final String name;
+  final double? temp;
+
+  const _HeroCaption({required this.name, this.temp});
+
+  static const _shadow = [Shadow(blurRadius: 8, color: Colors.black87)];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = temp;
+    final title = Text(
+      name,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.w800,
+        fontSize: 20,
+        height: 1.15,
+        shadows: _shadow,
+      ),
+    );
+    if (t == null) return title;
+    return LayoutBuilder(
+      builder: (context, c) => Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // The name takes whatever the temperature leaves.
+          Expanded(child: title),
+          const SizedBox(width: 10),
+          // At most ~55% of the width; scales down rather than overflowing
+          // at large text sizes.
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: c.maxWidth * .55),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.bottomRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Tinted dot: the temperature colour scale, on any image.
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: AppTheme.temperatureColor(t),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    WeatherFormat.temp(t),
+                    maxLines: 1,
+                    style: AppTheme.numberStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      height: 1.0,
+                      shadows: _shadow,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown in place of the image when no frame could be loaded.
+class _ImageUnavailable extends StatelessWidget {
+  const _ImageUnavailable();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: cs.surfaceContainerHighest,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.broken_image_outlined, color: cs.onSurfaceVariant),
+            const SizedBox(height: 8),
+            Text(
+              'Slika ni na voljo',
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ],
         ),
       ),
     );

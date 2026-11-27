@@ -25,6 +25,8 @@ Future<T?> showAppSheet<T>(
 /// shrinks the sheet (and dismisses it past [minSize]) instead of getting
 /// stuck scrolling, which is what made the old sheets impossible to close.
 class AppSheet extends StatelessWidget {
+  /// Header title. Without one the header is slim: the drag handle, the
+  /// [subtitle] (if any) and the close button.
   final String? title;
   final String? subtitle;
   final Widget? leading;
@@ -59,9 +61,16 @@ class AppSheet extends StatelessWidget {
   double _headerHeight(BuildContext context) {
     // Handle (8 + 5) plus the row's vertical padding (2 + 6).
     const chrome = 21.0;
-    // Room for the 44pt close button even without a title.
-    if (title == null) return chrome + _closeHitSize;
     final scaler = MediaQuery.textScalerOf(context);
+    // Slim header: handle, close button and at most a one-line subtitle
+    // (e.g. a sheet whose hero image carries the title).
+    if (title == null) {
+      final line = subtitle == null
+          ? 0.0
+          : scaler.scale(_subtitleFontSize) * 1.35;
+      final content = line > _closeHitSize ? line : _closeHitSize;
+      return (chrome + content).ceilToDouble();
+    }
     // Generous line-height factor: plain TextStyles use the font's own
     // metrics, which differ per platform font.
     const lineHeight = 1.35;
@@ -131,6 +140,8 @@ const _subtitleFontSize = 13.0;
 const _closeHitSize = 44.0;
 
 class _SheetHeader extends SliverPersistentHeaderDelegate {
+  /// Header title. Without one the header is slim: the drag handle, the
+  /// [subtitle] (if any) and the close button.
   final String? title;
   final String? subtitle;
   final Widget? leading;
@@ -190,7 +201,19 @@ class _SheetHeader extends SliverPersistentHeaderDelegate {
                   if (leading != null) ...[leading!, const SizedBox(width: 10)],
                   Expanded(
                     child: title == null
-                        ? const SizedBox.shrink()
+                        ? subtitle == null
+                              ? const SizedBox.shrink()
+                              : Text(
+                                  subtitle!,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: cs.onSurfaceVariant,
+                                    fontSize: _subtitleFontSize,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
                         : Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,

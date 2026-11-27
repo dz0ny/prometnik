@@ -65,22 +65,29 @@ class WebcamThumbnail extends StatelessWidget {
     : width = size.width,
       height = size.height;
 
+  /// Corner radius of the frame (outer edge, rim included).
+  static const double radius = 10;
+
+  /// White rim, as on the map pins.
+  static const double rim = 1.5;
+
   @override
   Widget build(BuildContext context) {
     // No solid fill or shadow behind the frame: while it loads (or fails) it
     // stays a faint outline instead of a black box burying nearby pins.
+    // The white rim and rounded corners match the map pins below it.
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(radius),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.7),
-          width: 1.5,
+          color: Colors.white.withValues(alpha: 0.9),
+          width: rim,
         ),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(6.5),
+        borderRadius: BorderRadius.circular(radius - rim),
         child: LiveWebcamImage(
           url: url,
           // Decode at display size (3x for retina, capped), not the full frame.
@@ -89,7 +96,7 @@ class WebcamThumbnail extends StatelessWidget {
           placeholder: (_) =>
               ColoredBox(color: Colors.black.withValues(alpha: 0.12)),
           errorWidget: (_) => ColoredBox(
-            color: Colors.black.withValues(alpha: 0.25),
+            color: const Color(0xFF3A4B5E).withValues(alpha: 0.55),
             child: const Center(
               child: Icon(Icons.videocam_off, size: 16, color: Colors.white70),
             ),

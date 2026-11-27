@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../services/webcam_store.dart';
+import '../theme/app_theme.dart';
 
 /// A webcam image that paints the last known frame **instantly** (memory,
 /// then disk) and swaps in the fresh frame when it arrives — no spinner on
@@ -474,9 +475,9 @@ class _WebcamHistoryStripState extends State<WebcamHistoryStrip> {
                       left: i * cell,
                       child: Text(
                         '${_slotHour(i, now).hour.toString().padLeft(2, '0')}h',
-                        style: TextStyle(
+                        style: AppTheme.numberStyle(
                           fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           color: cs.onSurfaceVariant,
                         ),
                       ),
@@ -658,10 +659,10 @@ class WebcamTimeLabel extends StatelessWidget {
       '${webcamHourLabel(s.at)} · $ago',
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: TextStyle(
+      style: AppTheme.numberStyle(
         color: cs.primary,
-        fontSize: 12,
-        fontWeight: FontWeight.w700,
+        fontSize: 12.5,
+        fontWeight: FontWeight.w800,
       ),
     );
   }
@@ -687,10 +688,10 @@ class WebcamSnapshotBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             'Posnetek ${webcamHourLabel(frame.at)}',
-            style: const TextStyle(
+            style: AppTheme.numberStyle(
               color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],

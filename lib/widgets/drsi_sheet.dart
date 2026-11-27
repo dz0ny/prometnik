@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/drsi_station.dart';
 import '../theme/app_theme.dart';
+import 'temperature_marker.dart' show MapPill, TemperatureMarker;
 import 'weather_details.dart' show WeatherFormat;
 
 const _riskColors = <RoadRisk, Color>{
@@ -38,62 +39,44 @@ String _wholeDegrees(double t) {
 
 String _t(double? v) => WeatherFormat.temp(v);
 
-/// Map pin: road surface temperature on a pill tinted by [RoadRisk].
+/// Map pin for a lone DRSI road station: the shared [MapPill] with the road
+/// temperature, tinted by temperature, and the ice risk on its badge.
+///
+/// Place the Marker with `alignment: Alignment.topCenter` so the pointer tip
+/// (bottom centre of the box) sits on the coordinate.
 class DrsiMarker extends StatelessWidget {
   final DrsiStation station;
   final VoidCallback onTap;
 
   const DrsiMarker({super.key, required this.station, required this.onTap});
 
+  /// Marker box width.
+  static const double pinWidth = 66;
+
   @override
   Widget build(BuildContext context) {
-    final risk = station.risk;
-    final bg = drsiRiskColor(risk);
-    final fg = bg.computeLuminance() < 0.45 ? Colors.white : Colors.black;
     final t = station.roadTemp;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      // Size to content (like TemperatureMarker) instead of overflowing the
-      // fixed Marker box with large text or wide labels.
-      child: OverflowBox(
-        minWidth: 0,
-        minHeight: 0,
-        maxWidth: double.infinity,
-        maxHeight: double.infinity,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white, width: 1.5),
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black38,
-                blurRadius: 3,
-                offset: Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                risk == RoadRisk.ok ? Icons.add_road : Icons.ac_unit,
-                size: 13,
-                color: fg,
-              ),
-              const SizedBox(width: 3),
-              Text(
-                t == null ? '–' : '${_wholeDegrees(t)}°',
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
+    final name = station.name.trim();
+    return Semantics(
+      button: true,
+      label: [
+        name.isEmpty ? 'Cestna postaja' : name,
+        'cesta ${t == null ? 'ni podatka' : '${_wholeDegrees(t)} °C'}',
+        drsiRiskLabel(station.risk),
+      ].join(', '),
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        // Size to content (like TemperatureMarker) instead of overflowing the
+        // fixed Marker box with large text or wide labels.
+        child: OverflowBox(
+          minWidth: 0,
+          minHeight: 0,
+          maxWidth: double.infinity,
+          maxHeight: double.infinity,
+          alignment: Alignment.bottomCenter,
+          child: MapPill(segments: [TemperatureMarker.roadSegment(station)]),
         ),
       ),
     );

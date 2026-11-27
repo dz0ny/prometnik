@@ -13,8 +13,8 @@ import 'weather_details.dart' show WeatherFormat;
 
 /// Compact combined readout for a place: air and road temperature side by
 /// side, the last 24 hours of air temperature (or today's min–max range
-/// until history exists), and one dense grid of the remaining readings from
-/// the weather station and the DRSI road station.
+/// until history exists), and a dense wrap of compact chips with the
+/// remaining readings from the weather station and the DRSI road station.
 class StationOverview extends StatefulWidget {
   final WeatherStation station;
   final DrsiStation? road;
@@ -92,6 +92,7 @@ class _StationOverviewState extends State<StationOverview> {
                     icon: Icons.thermostat,
                     label: 'Zrak',
                     value: WeatherFormat.temp(w.outdoorTemperatureC),
+                    temp: w.outdoorTemperatureC,
                     color: AppTheme.temperatureColor(w.outdoorTemperatureC),
                     detail: _minMax(w),
                   ),
@@ -103,6 +104,7 @@ class _StationOverviewState extends State<StationOverview> {
                     icon: risk == RoadRisk.ok ? Icons.add_road : Icons.ac_unit,
                     label: 'Cestišče',
                     value: WeatherFormat.temp(road.roadTemp),
+                    temp: road.roadTemp,
                     color: drsiRiskColor(risk!),
                     detail: road.roadState.isEmpty
                         ? drsiRiskLabel(risk)
@@ -121,7 +123,7 @@ class _StationOverviewState extends State<StationOverview> {
           _TemperatureHistoryCard(reading: w, history: _history),
         ],
         const SizedBox(height: 8),
-        _StatGrid(stats: _stats(cs, w, road)),
+        _ReadingChips(stats: _stats(cs, w, road)),
         if (road != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -187,6 +189,11 @@ class _HeadlineTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+
+  /// The temperature shown in [value]; tints the number.
+  final double? temp;
+
+  /// Tile accent (border, fill, icon and detail).
   final Color color;
   final String? detail;
 
@@ -194,6 +201,7 @@ class _HeadlineTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    required this.temp,
     required this.color,
     this.detail,
   });
@@ -201,13 +209,14 @@ class _HeadlineTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final accent = AppTheme.readableText(color, Theme.of(context).brightness);
+    final brightness = Theme.of(context).brightness;
+    final accent = AppTheme.readableText(color, brightness);
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 9),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: .13),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: .45)),
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: .4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -215,28 +224,34 @@ class _HeadlineTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 15, color: accent),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+              Icon(icon, size: 14, color: accent),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 2),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: const TextStyle(
-                fontSize: 28,
+              style: AppTheme.numberStyle(
+                fontSize: 26,
                 fontWeight: FontWeight.w800,
                 height: 1.15,
+                color: temp == null
+                    ? cs.onSurface
+                    : AppTheme.temperatureTextColor(temp, brightness),
               ),
             ),
           ),
@@ -247,7 +262,7 @@ class _HeadlineTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: accent,
-                fontSize: 12,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -497,42 +512,68 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
             ],
           ),
           const SizedBox(height: 8),
-          if (hasChart)
-            LayoutBuilder(
-              builder: (context, c) => GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (d) =>
-                    _selectAt(d.localPosition.dx, c.maxWidth, points),
-                onHorizontalDragStart: (d) =>
-                    _selectAt(d.localPosition.dx, c.maxWidth, points),
-                onHorizontalDragUpdate: (d) =>
-                    _selectAt(d.localPosition.dx, c.maxWidth, points),
-                child: SizedBox(
-                  key: ValueKey('${metric.name}-chart'),
-                  height: 96,
-                  width: c.maxWidth,
-                  child: CustomPaint(
-                    painter: _HistoryChartPainter(
-                      metric: metric,
-                      points: points,
-                      selected: sel,
-                      line: color,
-                      grid: cs.outlineVariant,
-                      label: cs.onSurfaceVariant,
-                      marker: cs.onSurface,
-                    ),
-                  ),
-                ),
-              ),
-            )
-          else ...[
-            _RangeBar(lo: lo!, hi: hi!, now: now!),
-            const SizedBox(height: 6),
-            Text(
-              'Graf zadnjih 24 ur se še zbira.',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
+          // Fade between series; only the plot changes, the title and the
+          // readout above update in place.
+          AnimatedSwitcher(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.topLeft,
+              children: [
+                for (final p in previous) IgnorePointer(child: p),
+                ?current,
+              ],
             ),
-          ],
+            child: KeyedSubtree(
+              key: ValueKey(hasChart ? 'plot-${metric.name}' : 'plot-range'),
+              child: hasChart
+                  ? LayoutBuilder(
+                      builder: (context, c) => GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapDown: (d) =>
+                            _selectAt(d.localPosition.dx, c.maxWidth, points),
+                        onHorizontalDragStart: (d) =>
+                            _selectAt(d.localPosition.dx, c.maxWidth, points),
+                        onHorizontalDragUpdate: (d) =>
+                            _selectAt(d.localPosition.dx, c.maxWidth, points),
+                        child: SizedBox(
+                          key: ValueKey('${metric.name}-chart'),
+                          height: 96,
+                          width: c.maxWidth,
+                          child: CustomPaint(
+                            painter: _HistoryChartPainter(
+                              metric: metric,
+                              points: points,
+                              selected: sel,
+                              line: color,
+                              grid: cs.outlineVariant,
+                              label: cs.onSurfaceVariant,
+                              marker: cs.onSurface,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _RangeBar(lo: lo!, hi: hi!, now: now!),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Graf zadnjih 24 ur se še zbira.',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
         ],
       ),
     );
@@ -572,11 +613,14 @@ class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
           children: [
             TextSpan(
               text: '$when  ',
-              style: TextStyle(color: cs.onSurfaceVariant),
+              style: sel == null
+                  ? TextStyle(color: cs.onSurfaceVariant)
+                  : AppTheme.numberStyle(color: cs.onSurfaceVariant),
             ),
             TextSpan(
               text: main,
-              style: TextStyle(
+              style: AppTheme.numberStyle(
+                fontSize: 13,
                 color: sel == null ? cs.onSurface : color,
                 fontWeight: FontWeight.w800,
               ),
@@ -687,7 +731,7 @@ class _RangeBar extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final span = math.max(hi - lo, 0.1);
     final pos = ((now - lo) / span).clamp(0.0, 1.0);
-    final labelStyle = TextStyle(
+    final labelStyle = AppTheme.numberStyle(
       color: cs.onSurfaceVariant,
       fontSize: 12,
       fontWeight: FontWeight.w700,
@@ -1057,18 +1101,18 @@ class _Stat {
   const _Stat(this.icon, this.label, this.value);
 }
 
-/// Three-column grid of small label/value tiles.
-class _StatGrid extends StatelessWidget {
+/// Dense wrap of compact reading chips — icon, value and a small label —
+/// three per row (two on narrow screens or at large text).
+class _ReadingChips extends StatelessWidget {
   final List<_Stat> stats;
-  const _StatGrid({required this.stats});
+  const _ReadingChips({required this.stats});
 
   @override
   Widget build(BuildContext context) {
     if (stats.isEmpty) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, c) {
-        const gap = 8.0;
+        const gap = 6.0;
         final scale = MediaQuery.textScalerOf(context).scale(1);
         final columns = scale > 1.3 || c.maxWidth < 330 ? 2 : 3;
         final width = (c.maxWidth - gap * (columns - 1)) / columns;
@@ -1077,51 +1121,65 @@ class _StatGrid extends StatelessWidget {
           runSpacing: gap,
           children: [
             for (final s in stats)
-              Container(
+              SizedBox(
                 width: width,
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withValues(alpha: .55),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(s.icon, size: 13, color: cs.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            s.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      s.value,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
+                child: _ReadingChip(stat: s),
               ),
           ],
         );
       },
+    );
+  }
+}
+
+class _ReadingChip extends StatelessWidget {
+  final _Stat stat;
+  const _ReadingChip({required this.stat});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(stat.icon, size: 16, color: cs.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  stat.value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.numberStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                    color: cs.onSurface,
+                  ),
+                ),
+                Text(
+                  stat.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 10.5,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

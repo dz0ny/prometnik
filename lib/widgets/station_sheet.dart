@@ -25,10 +25,13 @@ void showRoadStationSheet(BuildContext context, DrsiStation road) {
   showAppSheet<void>(context, builder: (_) => StationSheet(roadId: road.id));
 }
 
-/// Detail sheet shown when a weather/camera pin is tapped: station name and
-/// update time in the pinned header, the live webcam (tap or the fullscreen
-/// button = fullscreen; the refresh button or a long-press = refresh) and the
-/// full weather reading below.
+/// Detail sheet shown when a weather/camera pin is tapped. With a camera the
+/// live frame is a full-width hero at the top with the place name and the
+/// current temperature (air, or road for a lone road station) over its
+/// bottom; tap or the fullscreen button = fullscreen, the refresh button or a
+/// long-press = refresh. The slim pinned header keeps the update time and the
+/// close button; without a camera the header carries the name. The full
+/// reading follows below.
 class StationSheet extends ConsumerWidget {
   /// The weather station; null for a lone DRSI road station ([roadId]).
   final int? stationId;
@@ -80,29 +83,41 @@ class StationSheet extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final roadOnly = id == null;
     final updated = roadOnly ? road?.measuredAt : station.weather?.timestamp;
+    final name = station.name.isEmpty ? 'Postaja' : station.name;
+    final hasCamera = station.cameraLink.isNotEmpty;
+    // Camera-only stations have no reading time: no subtitle at all rather
+    // than "ni podatka".
+    final subtitle = updated == null
+        ? null
+        : 'Posodobljeno: ${WeatherFormat.timestamp(updated)}';
 
     return AppSheet(
-      title: station.name.isEmpty ? 'Postaja' : station.name,
-      // Camera-only stations have no reading time: no subtitle at all rather
-      // than "ni podatka".
-      subtitle: updated == null
+      // The hero image carries the name; the header stays slim.
+      title: hasCamera ? null : name,
+      subtitle: subtitle,
+      leading: hasCamera
           ? null
-          : 'Posodobljeno: ${WeatherFormat.timestamp(updated)}',
-      leading: roadOnly
+          : roadOnly
           ? Icon(Icons.add_road, color: drsiRiskColor(road!.risk))
           : Icon(
               station.hasWeather ? Icons.thermostat : Icons.videocam,
               color: cs.primary,
             ),
       children: [
-        if (station.cameraLink.isNotEmpty) ...[
+        if (hasCamera) ...[
           InteractiveWebcam(
             station: station,
             autoRefresh: const Duration(seconds: 60),
             // The worker keeps 24-hour history for weather-station cameras.
             showHistory: !roadOnly,
+            fit: BoxFit.cover,
+            borderRadius: 24,
+            overlayName: name,
+            overlayTemp: roadOnly
+                ? road?.roadTemp
+                : station.weather?.outdoorTemperatureC,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
         ],
         if (station.weather != null || road != null)
           StationOverview(station: station, road: road)

@@ -204,6 +204,49 @@ class AppTheme {
     return 56 + MediaQuery.viewPaddingOf(context).bottom;
   }
 
+  // ── Numbers ────────────────────────────────────────────────────────────
+
+  /// Bundled rounded display face for numbers (see pubspec `fonts:`).
+  static const String numberFontFamily = 'Nunito';
+
+  /// Style for numeric readouts — temperatures, times, counts — in the
+  /// bundled rounded [numberFontFamily] with tabular figures, so values
+  /// don't jitter as they change. Only for numbers; the app font is unchanged.
+  ///
+  /// The font is variable (wght 200–1000, default 200), so the weight axis is
+  /// set explicitly as well as [FontWeight]. Nunito's digits are already
+  /// equal-width; the tabular feature is kept for fallback fonts.
+  static TextStyle numberStyle({
+    double? fontSize,
+    FontWeight fontWeight = FontWeight.w700,
+    Color? color,
+    double? height,
+    double? letterSpacing,
+    List<Shadow>? shadows,
+  }) {
+    return TextStyle(
+      fontFamily: numberFontFamily,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontVariations: [FontVariation.weight(fontWeight.value.toDouble())],
+      fontFeatures: const [FontFeature.tabularFigures()],
+      color: color,
+      height: height,
+      letterSpacing: letterSpacing,
+      shadows: shadows,
+    );
+  }
+
+  /// [temperatureColor] adjusted to read as text on the theme's surface:
+  /// darkened on light surfaces (like [readableText]) and lifted on dark
+  /// ones, where the deep violet and blue of freezing values would vanish.
+  static Color temperatureTextColor(double? c, Brightness brightness) {
+    final base = temperatureColor(c);
+    if (brightness == Brightness.light) return readableText(base, brightness);
+    final hsl = HSLColor.fromColor(base);
+    return hsl.lightness < 0.62 ? hsl.withLightness(0.62).toColor() : base;
+  }
+
   /// Map a temperature (°C) to a colour for markers and chips.
   static Color temperatureColor(double? c) {
     if (c == null) return const Color(0xFF6B7B8C);

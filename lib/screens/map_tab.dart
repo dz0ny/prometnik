@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
@@ -68,16 +69,39 @@ class MapTabState extends ConsumerState<MapTab> {
   static const double _cameraThumbnailZoom = 13;
   ThumbnailSize? _cameraThumbnailSize;
 
-  // Base map tiles: OpenStreetMap or Seznam (Mapy.cz), as in gozdar.
+  /// Below this zoom nearby cameras merge into count badges; from here on
+  /// (where their webcam frames start) every camera has its own pin.
+  static const double _clusterMaxZoom = _cameraThumbnailZoom;
+
+  /// Whole-zoom bucket the camera clusters are computed for, or null when
+  /// zoomed in past [_clusterMaxZoom]. Changes only when crossing a whole
+  /// zoom level, so panning never re-clusters.
+  int? _clusterZoom = _clusterZoomFor(_initialZoom);
+
+  static int? _clusterZoomFor(double zoom) =>
+      zoom >= _clusterMaxZoom ? null : zoom.floor();
+
+  // Base map tiles: the calm CARTO map, OpenStreetMap or Seznam (Mapy.cz).
   BaseMap _baseMap = BaseMap.saved;
 
-  void _toggleBaseMap() {
-    setState(() {
-      _baseMap = _baseMap == BaseMap.openStreetMap
-          ? BaseMap.seznam
-          : BaseMap.openStreetMap;
-    });
-    BaseMap.saved = _baseMap;
+  void _setBaseMap(BaseMap base) {
+    if (base == _baseMap) return;
+    setState(() => _baseMap = base);
+    BaseMap.saved = base;
+  }
+
+  /// Zoom in on a camera cluster: fit its cameras, but always at least one
+  /// level deeper so co-located cameras (degenerate bounds) still split.
+  void _zoomToCluster(List<LatLng> points) {
+    if (!_mapReady || points.isEmpty) return;
+    final camera = _mapController.camera;
+    final fitted = CameraFit.coordinates(
+      coordinates: points,
+      padding: const EdgeInsets.all(72),
+      maxZoom: 16,
+    ).fit(camera);
+    final zoom = math.max(fitted.zoom, camera.zoom.floor() + 1.0);
+    _mapController.move(fitted.center, math.min(zoom, 16));
   }
 
   // Map layer filters.
@@ -558,6 +582,11 @@ class MapTabState extends ConsumerState<MapTab> {
         builder: (context, ref, _) {
           final cs = Theme.of(context).colorScheme;
           final isDark = Theme.of(context).brightness == Brightness.dark;
+          final stationFlags = (
+            weather: _showWeather,
+            cameras: _showCameras,
+            road: _showDrsi && DrsiService.isSupported,
+          );
           // Message to show when loading failed with nothing to fall back on.
           final weatherError = ref.watch(
             weatherProvider.select(
@@ -581,8 +610,8 @@ class MapTabState extends ConsumerState<MapTab> {
                     flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                   ),
                   onMapReady: () => _mapReady = true,
-                  // Only rebuild when crossing a thumbnail threshold, not
-                  // on every pan/zoom frame.
+                  // Only rebuild when crossing a thumbnail threshold or a
+                  // whole cluster zoom level, not on every pan/zoom frame.
                   onPositionChanged: (camera, _) {
                     final size = ThumbnailSize.forZoom(
                       camera.zoom,
@@ -592,11 +621,14 @@ class MapTabState extends ConsumerState<MapTab> {
                       camera.zoom,
                       minZoom: _cameraThumbnailZoom,
                     );
+                    final clusterZoom = _clusterZoomFor(camera.zoom);
                     if (size != _thumbnailSize ||
-                        camSize != _cameraThumbnailSize) {
+                        camSize != _cameraThumbnailSize ||
+                        clusterZoom != _clusterZoom) {
                       setState(() {
                         _thumbnailSize = size;
                         _cameraThumbnailSize = camSize;
+                        _clusterZoom = clusterZoom;
                       });
                     }
                   },
@@ -614,17 +646,24 @@ class MapTabState extends ConsumerState<MapTab> {
                         polylines: _eventRoads,
                       ),
                     ),
-                  if (_showDarsCameras)
-                    _DarsCamerasLayer(thumbnailSize: _cameraThumbnailSize),
+                  // DARS cameras and camera-only stations, merged into
+                  // count badges where they would pile up.
+                  _CamerasLayer(
+                    stationFlags: stationFlags,
+                    showDars: _showDarsCameras,
+                    thumbnailSize: _cameraThumbnailSize,
+                    stationThumbnailSize: _thumbnailSize,
+                    clusterZoom: _clusterZoom,
+                    onTapStation: _openStation,
+                    onTapCluster: _zoomToCluster,
+                  ),
                   if (_showRestAreas)
                     _RestAreasLayer(onTapGroup: _openRestAreaGroup),
                   if (_showBurja) const _BurjaLayer(),
                   // Weather + DRSI road stations; ones sharing a spot are
                   // one pin.
                   _StationsLayer(
-                    showWeather: _showWeather,
-                    showCameras: _showCameras,
-                    showRoad: _showDrsi && DrsiService.isSupported,
+                    flags: stationFlags,
                     thumbnailSize: _thumbnailSize,
                     onTap: _openStation,
                   ),
@@ -688,7 +727,7 @@ class MapTabState extends ConsumerState<MapTab> {
                   alignment: Alignment.topRight,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: FilterButton(
+                    child: _GlassFilterButton(
                       activeCount: _activeMapFilterCount,
                       onTap: _openMapFilters,
                     ),
@@ -708,18 +747,13 @@ class MapTabState extends ConsumerState<MapTab> {
                       12,
                       12 + AppTheme.bottomBarContentInset(context),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                    child: _GlassPanel(
                       children: [
-                        if (BaseMap.seznamAvailable) ...[
-                          _MapButton(
-                            icon: Icons.layers,
-                            label: 'Zamenjaj podlago',
-                            onTap: _toggleBaseMap,
-                          ),
-                          const SizedBox(height: 10),
-                        ],
-                        _MapButton(
+                        _BaseMapMenu(
+                          current: _baseMap,
+                          onSelected: _setBaseMap,
+                        ),
+                        _GlassIconButton(
                           icon: Icons.my_location,
                           label: 'Moja lokacija',
                           onTap: _goToMyLocation,
@@ -786,18 +820,15 @@ class MapTabState extends ConsumerState<MapTab> {
   }
 }
 
-/// A small circular pin for a DARS camera. When [thumbnailUrl] is set
-/// (zoomed in), a live webcam frame sits above the pin.
+/// A round camera badge for a DARS camera or a camera-only station. When
+/// [thumbnailUrl] is set (zoomed in), a live webcam frame sits above it.
 class _CameraMarker extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final String? thumbnailUrl;
   final ThumbnailSize thumbnailSize;
 
-  /// Visible pin diameter.
-  static const double pinSize = 26;
-
-  /// Tappable square around the pin (transparent padding).
+  /// Tappable square around the badge (transparent padding).
   static const double hitSize = _minPinHitSize;
 
   const _CameraMarker({
@@ -823,36 +854,55 @@ class _CameraMarker extends StatelessWidget {
               WebcamThumbnail.sized(thumbnailUrl!, thumbnailSize),
               const SizedBox(height: WebcamThumbnail.gap),
             ],
-            SizedBox.square(
+            const SizedBox.square(
               dimension: hitSize,
-              child: Center(child: _pin()),
+              child: Center(child: MapCameraBadge()),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _pin() {
-    return SizedBox.square(
-      dimension: pinSize,
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF455A64),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 1.5),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black38,
-              blurRadius: 3,
-              offset: Offset(0, 1),
-            ),
-          ],
+/// Several cameras merged at a low zoom; tapping zooms in on them.
+class _ClusterMarker extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _ClusterMarker({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '${cameraCountLabel(count)}, povečaj',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        // Sized to the badge, centred on the coordinate (not stretched to
+        // the Marker box).
+        child: OverflowBox(
+          minWidth: 0,
+          maxWidth: double.infinity,
+          minHeight: 0,
+          maxHeight: double.infinity,
+          child: MapClusterBadge(count: count),
         ),
-        child: const Icon(Icons.photo_camera, size: 13, color: Colors.white),
       ),
     );
   }
+}
+
+/// "1 kamera", "2 kameri", "3 kamere", "5 kamer" (Slovenian dual/plural).
+@visibleForTesting
+String cameraCountLabel(int n) {
+  final m = n % 100;
+  if (m == 1) return '$n kamera';
+  if (m == 2) return '$n kameri';
+  if (m == 3 || m == 4) return '$n kamere';
+  return '$n kamer';
 }
 
 /// A rest-area pin tinted by parking availability. When live data is present
@@ -1126,13 +1176,94 @@ class _UserDot extends StatelessWidget {
   }
 }
 
-/// A circular map overlay button (e.g. "my location").
-class _MapButton extends StatelessWidget {
+/// Frosted-glass backdrop for the map controls: the blurred map behind a
+/// translucent surface with a hairline border.
+class _Glass extends StatelessWidget {
+  final double radius;
+  final Widget child;
+
+  const _Glass({required this.radius, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final shape = BorderRadius.circular(radius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: shape,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x29000000),
+            blurRadius: 12,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      // Clipped, so the blur covers only the control and not the whole map.
+      child: ClipRRect(
+        borderRadius: shape,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: cs.surface.withValues(alpha: dark ? 0.55 : 0.68),
+              borderRadius: shape,
+              border: Border.all(
+                color: (dark ? Colors.white : Colors.black).withValues(
+                  alpha: dark ? 0.18 : 0.10,
+                ),
+                width: 0.5,
+              ),
+            ),
+            child: Material(type: MaterialType.transparency, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Minimum touch target of the map controls.
+const double _glassButtonSize = 44;
+
+/// Vertical stack of glass buttons sharing one frosted capsule.
+class _GlassPanel extends StatelessWidget {
+  final List<Widget> children;
+
+  const _GlassPanel({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    final divider = Theme.of(context).colorScheme.onSurface
+        .withValues(alpha: 0.12);
+    return _Glass(
+      radius: _glassButtonSize / 2,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (i, child) in children.indexed) ...[
+            if (i > 0)
+              SizedBox(
+                width: _glassButtonSize - 16,
+                height: 0.5,
+                child: ColoredBox(color: divider),
+              ),
+            child,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A 44pt icon button for the map controls (inside a [_Glass] surface).
+class _GlassIconButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
-  const _MapButton({
+  const _GlassIconButton({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -1148,19 +1279,116 @@ class _MapButton extends StatelessWidget {
         button: true,
         label: label,
         excludeSemantics: true,
-        child: Material(
-          color: cs.surface.withValues(alpha: 0.95),
-          shape: const CircleBorder(),
-          elevation: 2,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(11),
-              child: Icon(icon, color: cs.primary, size: 22),
-            ),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox.square(
+            dimension: _glassButtonSize,
+            child: Icon(icon, color: cs.primary, size: 21),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Compact glass filter button; a small badge counts the map filters that
+/// hide something.
+class _GlassFilterButton extends StatelessWidget {
+  final int activeCount;
+  final VoidCallback onTap;
+
+  const _GlassFilterButton({required this.activeCount, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final active = activeCount > 0;
+    return Tooltip(
+      message: 'Filtri',
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        label: active ? 'Filtri, aktivnih: $activeCount' : 'Filtri',
+        excludeSemantics: true,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _Glass(
+              radius: _glassButtonSize / 2,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onTap,
+                child: SizedBox.square(
+                  dimension: _glassButtonSize,
+                  child: Icon(
+                    Icons.tune,
+                    size: 21,
+                    color: active ? cs.primary : cs.onSurface,
+                  ),
+                ),
+              ),
+            ),
+            if (active)
+              Positioned(
+                top: -3,
+                right: -3,
+                child: IgnorePointer(
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 18),
+                    height: 18,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: cs.primary,
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: cs.surface, width: 1.5),
+                    ),
+                    child: Text(
+                      '$activeCount',
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(
+                        color: cs.onPrimary,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The layers button: a menu of the base maps, the current one ticked.
+class _BaseMapMenu extends StatelessWidget {
+  final BaseMap current;
+  final ValueChanged<BaseMap> onSelected;
+
+  const _BaseMapMenu({required this.current, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return MenuAnchor(
+      menuChildren: [
+        for (final base in BaseMap.selectable)
+          MenuItemButton(
+            leadingIcon: SizedBox.square(
+              dimension: 18,
+              child: base == current ? const Icon(Icons.check, size: 18) : null,
+            ),
+            onPressed: () => onSelected(base),
+            child: Text(base.label),
+          ),
+      ],
+      builder: (context, controller, _) => _GlassIconButton(
+        icon: Icons.layers,
+        label: 'Zamenjaj podlago',
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),
     );
   }
@@ -1240,84 +1468,285 @@ class _Memo<A, B, R> {
   }
 }
 
-class _DarsCamerasLayer extends ConsumerStatefulWidget {
-  /// Thumbnail tier for the current zoom, or null for plain pins.
-  final ThumbnailSize? thumbnailSize;
-  const _DarsCamerasLayer({required this.thumbnailSize});
+/// Nearby points merged into one, see [clusterByScreenDistance].
+@visibleForTesting
+class MapCluster<T> {
+  final List<T> items;
+  final List<LatLng> points;
 
-  @override
-  ConsumerState<_DarsCamerasLayer> createState() => _DarsCamerasLayerState();
+  MapCluster._(this.items, this.points);
+
+  /// Mean position of the members.
+  LatLng get center {
+    var lat = 0.0, lon = 0.0;
+    for (final p in points) {
+      lat += p.latitude;
+      lon += p.longitude;
+    }
+    return LatLng(lat / points.length, lon / points.length);
+  }
 }
 
-class _DarsCamerasLayerState extends ConsumerState<_DarsCamerasLayer> {
+/// Greedy screen-space clustering: projects every item to world pixels at
+/// [zoom] and joins it to the first cluster whose seed lies within [radius]
+/// pixels, else starts a new one. A grid of [radius]-sized cells keeps it
+/// O(n). Working in world pixels (not screen pixels) makes the result
+/// independent of panning, so it only changes with [zoom] or the data.
+@visibleForTesting
+List<MapCluster<T>> clusterByScreenDistance<T>(
+  List<T> items,
+  LatLng Function(T) positionOf, {
+  required int zoom,
+  double radius = 40,
+}) {
+  const crs = Epsg3857();
+  final z = zoom.toDouble();
+  final r2 = radius * radius;
+  final clusters = <MapCluster<T>>[];
+  final seeds = <Offset>[];
+  final grid = <(int, int), List<int>>{};
+  for (final item in items) {
+    final pos = positionOf(item);
+    final p = crs.latLngToOffset(pos, z);
+    final cx = (p.dx / radius).floor(), cy = (p.dy / radius).floor();
+    int? hit;
+    search:
+    for (var dx = -1; dx <= 1; dx++) {
+      for (var dy = -1; dy <= 1; dy++) {
+        for (final i in grid[(cx + dx, cy + dy)] ?? const <int>[]) {
+          if ((seeds[i] - p).distanceSquared <= r2) {
+            hit = i;
+            break search;
+          }
+        }
+      }
+    }
+    if (hit != null) {
+      clusters[hit].items.add(item);
+      clusters[hit].points.add(pos);
+    } else {
+      grid.putIfAbsent((cx, cy), () => []).add(clusters.length);
+      seeds.add(p);
+      clusters.add(MapCluster._([item], [pos]));
+    }
+  }
+  return clusters;
+}
+
+/// One point of the cameras layer: a DARS camera or a camera-only station.
+class _CameraPoint {
+  final String key;
+  final LatLng position;
+  final TrafficCamera? camera;
+  final WeatherStation? station;
+
+  _CameraPoint.dars(TrafficCamera this.camera)
+    : key = 'cam:${camera.id}',
+      position = camera.position,
+      station = null;
+
+  _CameraPoint.station(WeatherStation this.station)
+    : key = 'st:${station.stationId}',
+      position = station.position,
+      camera = null;
+}
+
+/// DARS cameras and camera-only weather stations as round camera badges.
+/// Below [clusterZoom]'s threshold nearby badges merge into count badges.
+class _CamerasLayer extends ConsumerStatefulWidget {
+  final _StationFlags stationFlags;
+  final bool showDars;
+
+  /// Thumbnail tier for DARS cameras at the current zoom, or null.
+  final ThumbnailSize? thumbnailSize;
+
+  /// Thumbnail tier for camera-only stations at the current zoom, or null.
+  final ThumbnailSize? stationThumbnailSize;
+
+  /// Whole zoom to cluster at, or null for no clustering.
+  final int? clusterZoom;
+  final void Function(WeatherStation, DrsiStation?) onTapStation;
+  final void Function(List<LatLng>) onTapCluster;
+
+  const _CamerasLayer({
+    required this.stationFlags,
+    required this.showDars,
+    required this.thumbnailSize,
+    required this.stationThumbnailSize,
+    required this.clusterZoom,
+    required this.onTapStation,
+    required this.onTapCluster,
+  });
+
+  @override
+  ConsumerState<_CamerasLayer> createState() => _CamerasLayerState();
+}
+
+class _CamerasLayerState extends ConsumerState<_CamerasLayer> {
   final _visibleMemo =
       _Memo<List<TrafficCamera>, List<WeatherStation>, List<TrafficCamera>>();
-  // Markers are rebuilt only when the visible list, the thumbnail tier or
-  // the 5-minute frame bucket changes, not on every build.
-  List<TrafficCamera>? _markersFor;
-  ThumbnailSize? _markersSize;
-  int? _markersBucket;
+  final _pointsMemo =
+      _Memo<List<TrafficCamera>, List<WeatherStation>, List<_CameraPoint>>();
+
+  /// Pins already shown once; they don't pop in again after culling.
+  final Set<Object> _seen = {};
+
+  // Markers are rebuilt only when the points, the cluster zoom, a thumbnail
+  // tier or the 5-minute frame bucket changes, not on every build.
+  List<_CameraPoint>? _forPoints;
+  int? _forZoom;
+  ThumbnailSize? _forSize;
+  ThumbnailSize? _forStationSize;
+  int? _forBucket;
   List<Marker> _markers = const [];
 
   @override
   Widget build(BuildContext context) {
-    final cameras = ref.watch(camerasProvider.select((s) => s.items));
     final stations = ref.watch(weatherProvider.select((s) => s.items));
+    final cameras = widget.showDars
+        ? ref.watch(camerasProvider.select((s) => s.items))
+        : const <TrafficCamera>[];
+    final cameraStations = ref.watch(
+      _pairingProvider(widget.stationFlags).select((p) => p.cameraOnly),
+    );
     // De-duplicating against weather-station cameras is O(cameras*stations);
     // do it once per data refresh, not on every build.
-    final visible = _visibleMemo(cameras, stations, visibleCameras);
+    final dars = _visibleMemo(cameras, stations, visibleCameras);
+    final points = _pointsMemo(
+      dars,
+      cameraStations,
+      (d, s) => [
+        for (final cam in d) _CameraPoint.dars(cam),
+        for (final st in s) _CameraPoint.station(st),
+      ],
+    );
+    final zoom = widget.clusterZoom;
     final size = widget.thumbnailSize;
-    final bucket = size != null ? webcamCacheBucket() : null;
-    if (!identical(visible, _markersFor) ||
-        size != _markersSize ||
-        bucket != _markersBucket) {
-      _markersFor = visible;
-      _markersSize = size;
-      _markersBucket = bucket;
-      _markers = [for (final cam in visible) _cameraMarker(cam, size, bucket)];
+    final stSize = widget.stationThumbnailSize;
+    final bucket = size != null || stSize != null ? webcamCacheBucket() : null;
+    if (!identical(points, _forPoints) ||
+        zoom != _forZoom ||
+        size != _forSize ||
+        stSize != _forStationSize ||
+        bucket != _forBucket) {
+      _forPoints = points;
+      _forZoom = zoom;
+      _forSize = size;
+      _forStationSize = stSize;
+      _forBucket = bucket;
+      _markers = _buildMarkers(points, zoom, bucket);
     }
     return MarkerLayer(markers: _markers);
   }
 
-  Marker _cameraMarker(TrafficCamera cam, ThumbnailSize? size, int? bucket) {
+  List<Marker> _buildMarkers(
+    List<_CameraPoint> points,
+    int? zoom,
+    int? bucket,
+  ) {
+    if (zoom == null) {
+      return [for (final p in points) _single(p, bucket)];
+    }
+    return [
+      for (final c in clusterByScreenDistance(
+        points,
+        (p) => p.position,
+        zoom: zoom,
+      ))
+        if (c.items.length == 1)
+          _single(c.items.single, bucket)
+        else
+          _cluster(c),
+    ];
+  }
+
+  Marker _cluster(MapCluster<_CameraPoint> c) {
+    // Keyed by the first member, not the zoom: a cluster that survives a
+    // zoom step keeps its state and doesn't pop in again.
+    final key = 'cl:${c.items.first.key}';
+    final width = math.max(
+      MapClusterBadge.estimateWidth(c.items.length),
+      _minPinHitSize,
+    );
+    return Marker(
+      key: ValueKey(key),
+      point: c.center,
+      width: width,
+      height: _minPinHitSize,
+      child: MapPopIn(
+        id: key,
+        seen: _seen,
+        child: _ClusterMarker(
+          count: c.items.length,
+          onTap: () => widget.onTapCluster(c.points),
+        ),
+      ),
+    );
+  }
+
+  Marker _single(_CameraPoint p, int? bucket) {
+    final cam = p.camera;
+    final station = p.station;
+    final String label;
+    final VoidCallback onTap;
+    String? thumb;
+    ThumbnailSize? size;
+    if (cam != null) {
+      final title = cam.title.trim();
+      label = title.isEmpty ? 'Prometna kamera' : 'Kamera $title';
+      onTap = () => showCameraSheet(context, cam);
+      size = widget.thumbnailSize;
+      if (size != null && bucket != null && cam.imageUrl.isNotEmpty) {
+        thumb = cam.imageUrlWithBuster(bucket);
+      }
+    } else {
+      final st = station!;
+      final name = st.name.trim();
+      label = 'Kamera $name'.trim();
+      onTap = () => widget.onTapStation(st, null);
+      size = widget.stationThumbnailSize;
+      if (size != null && bucket != null && st.cameraLink.isNotEmpty) {
+        thumb = st.cameraUrlWithBuster(bucket);
+      }
+    }
     const pin = _CameraMarker.hitSize;
-    final label = cam.title.trim().isEmpty
-        ? 'Prometna kamera'
-        : 'Kamera ${cam.title.trim()}';
-    final thumb = size != null && bucket != null && cam.imageUrl.isNotEmpty
-        ? cam.imageUrlWithBuster(bucket)
-        : null;
     if (thumb == null || size == null) {
       return Marker(
-        key: ValueKey('cam:${cam.id}'),
-        point: cam.position,
+        key: ValueKey(p.key),
+        point: p.position,
         width: pin,
         height: pin,
-        child: _CameraMarker(
-          label: label,
-          onTap: () => showCameraSheet(context, cam),
+        child: MapPopIn(
+          id: p.key,
+          seen: _seen,
+          child: _CameraMarker(label: label, onTap: onTap),
         ),
       );
     }
     final width = math.max(size.width, pin);
     final height = size.extent + pin;
     return Marker(
-      key: ValueKey('cam:${cam.id}'),
-      point: cam.position,
+      key: ValueKey(p.key),
+      point: p.position,
       width: width,
       height: height,
-      // Keep the pin's centre (not the box centre) on the coordinate.
+      // Keep the badge's centre (not the box centre) on the coordinate.
       alignment: Marker.computePixelAlignment(
         width: width,
         height: height,
         left: width / 2,
         top: height - pin / 2,
       ),
-      child: _CameraMarker(
-        label: label,
-        thumbnailUrl: thumb,
-        thumbnailSize: size,
-        onTap: () => showCameraSheet(context, cam),
+      child: MapPopIn(
+        id: p.key,
+        seen: _seen,
+        alignment: Alignment.bottomCenter,
+        child: _CameraMarker(
+          label: label,
+          thumbnailUrl: thumb,
+          thumbnailSize: size,
+          onTap: onTap,
+        ),
       ),
     );
   }
@@ -1383,44 +1812,42 @@ class _BurjaLayer extends ConsumerWidget {
   }
 }
 
-/// Weather stations and DRSI road stations in one layer. A road station
-/// within [_pairMeters] of a visible weather station is folded into that
-/// station's pin (one capsule, one tap, one sheet); the rest keep their own.
-class _StationsLayer extends ConsumerStatefulWidget {
-  final bool showWeather;
-  final bool showCameras;
-  final bool showRoad;
+/// Which station kinds the map shows: weather stations, camera-only
+/// stations, DRSI road stations.
+typedef _StationFlags = ({bool weather, bool cameras, bool road});
 
-  /// Thumbnail tier for the current zoom, or null for plain pins.
-  final ThumbnailSize? thumbnailSize;
-  final void Function(WeatherStation, DrsiStation?) onTap;
-
-  const _StationsLayer({
-    required this.showWeather,
-    required this.showCameras,
-    required this.showRoad,
-    required this.thumbnailSize,
-    required this.onTap,
-  });
-
-  @override
-  ConsumerState<_StationsLayer> createState() => _StationsLayerState();
-}
-
-class _StationsLayerState extends ConsumerState<_StationsLayer> {
+/// Weather stations paired with the DRSI road stations sharing their spot.
+class _Pairing {
+  /// A road station within [_pairMeters] of a visible weather station is
+  /// folded into that station's pin (one capsule, one tap, one sheet).
   static const double _pairMeters = 400;
 
-  List<WeatherStation>? _forStations;
-  List<DrsiStation>? _forRoads;
-  String _forFlags = '';
-  Map<int, DrsiStation> _roadByStation = const {};
-  List<DrsiStation> _loneRoads = const [];
+  /// Visible stations drawn as capsules (by the stations layer).
+  final List<WeatherStation> pills;
 
-  bool _visible(WeatherStation s) =>
-      s.hasWeather ? widget.showWeather : widget.showCameras;
+  /// Visible camera-only stations with no road station: round camera badges
+  /// (drawn and clustered by the cameras layer).
+  final List<WeatherStation> cameraOnly;
+  final Map<int, DrsiStation> roadByStation;
+
+  /// Road stations with no weather station nearby: their own capsule.
+  final List<DrsiStation> loneRoads;
+
+  const _Pairing._(
+    this.pills,
+    this.cameraOnly,
+    this.roadByStation,
+    this.loneRoads,
+  );
 
   /// Pair each road station with its nearest visible weather station.
-  void _pair(List<WeatherStation> stations, List<DrsiStation> roads) {
+  factory _Pairing.compute(
+    List<WeatherStation> stations,
+    List<DrsiStation> roads,
+    _StationFlags flags,
+  ) {
+    bool visible(WeatherStation s) =>
+        s.hasWeather ? flags.weather : flags.cameras;
     const distance = Distance();
     final byStation = <int, DrsiStation>{};
     final lone = <DrsiStation>[];
@@ -1428,7 +1855,7 @@ class _StationsLayerState extends ConsumerState<_StationsLayer> {
       WeatherStation? best;
       var bestD = _pairMeters;
       for (final s in stations) {
-        if (!_visible(s) || byStation.containsKey(s.stationId)) continue;
+        if (!visible(s) || byStation.containsKey(s.stationId)) continue;
         // Cheap reject before the exact distance.
         if ((s.position.latitude - road.position.latitude).abs() > 0.01) {
           continue;
@@ -1445,71 +1872,128 @@ class _StationsLayerState extends ConsumerState<_StationsLayer> {
         lone.add(road);
       }
     }
-    _roadByStation = byStation;
-    _loneRoads = lone;
+    final pills = <WeatherStation>[];
+    final cameraOnly = <WeatherStation>[];
+    for (final s in stations) {
+      if (!visible(s)) continue;
+      if (s.temperatureC == null && !byStation.containsKey(s.stationId)) {
+        cameraOnly.add(s);
+      } else {
+        pills.add(s);
+      }
+    }
+    return _Pairing._(pills, cameraOnly, byStation, lone);
   }
+}
+
+/// Station pairing for the given flags, shared by the stations and cameras
+/// layers so it runs once per data refresh.
+final _pairingProvider = Provider.autoDispose.family<_Pairing, _StationFlags>((
+  ref,
+  flags,
+) {
+  final stations = ref.watch(weatherProvider.select((s) => s.items));
+  final roads = flags.road
+      ? ref.watch(drsiProvider.select((s) => s.items))
+      : const <DrsiStation>[];
+  return _Pairing.compute(stations, roads, flags);
+});
+
+/// Weather stations and DRSI road stations as capsules; ones sharing a spot
+/// are one pin. Camera-only stations are drawn by [_CamerasLayer].
+class _StationsLayer extends ConsumerStatefulWidget {
+  final _StationFlags flags;
+
+  /// Thumbnail tier for the current zoom, or null for plain pins.
+  final ThumbnailSize? thumbnailSize;
+  final void Function(WeatherStation, DrsiStation?) onTap;
+
+  const _StationsLayer({
+    required this.flags,
+    required this.thumbnailSize,
+    required this.onTap,
+  });
+
+  @override
+  ConsumerState<_StationsLayer> createState() => _StationsLayerState();
+}
+
+class _StationsLayerState extends ConsumerState<_StationsLayer> {
+  /// Pins already shown once; they don't pop in again after culling.
+  final Set<Object> _seen = {};
 
   @override
   Widget build(BuildContext context) {
-    final stations = ref.watch(weatherProvider.select((s) => s.items));
-    final roads = widget.showRoad
-        ? ref.watch(drsiProvider.select((s) => s.items))
-        : const <DrsiStation>[];
-    final flags = '${widget.showWeather}${widget.showCameras}';
-    if (!identical(stations, _forStations) ||
-        !identical(roads, _forRoads) ||
-        flags != _forFlags) {
-      _forStations = stations;
-      _forRoads = roads;
-      _forFlags = flags;
-      _pair(stations, roads);
-    }
+    final pairing = ref.watch(_pairingProvider(widget.flags));
     // Frames refresh in 5-minute steps so rebuilds reuse the cached image.
     final bucket = webcamCacheBucket();
     return MarkerLayer(
       markers: [
-        for (final station in stations)
-          if (_visible(station)) _stationMarker(station, bucket),
-        for (final road in _loneRoads)
-          Marker(
-            key: ValueKey('drsi:${road.id}'),
-            point: road.position,
-            width: 56,
-            height: 40,
-            child: DrsiMarker(
-              station: road,
-              onTap: () => showRoadStationSheet(context, road),
-            ),
+        for (final station in pairing.pills)
+          _stationMarker(
+            station,
+            pairing.roadByStation[station.stationId],
+            bucket,
           ),
+        for (final road in pairing.loneRoads) _roadMarker(road),
       ],
     );
   }
 
-  Marker _stationMarker(WeatherStation station, int bucket) {
+  Marker _roadMarker(DrsiStation road) {
+    final key = 'drsi:${road.id}';
+    return Marker(
+      key: ValueKey(key),
+      point: road.position,
+      width: DrsiMarker.pinWidth,
+      height: MapPinStyle.pinHeight + 6,
+      // Bottom of the box (the pointer tip) sits on the coordinate.
+      alignment: Alignment.topCenter,
+      child: MapPopIn(
+        id: key,
+        seen: _seen,
+        alignment: Alignment.bottomCenter,
+        child: DrsiMarker(
+          station: road,
+          onTap: () => showRoadStationSheet(context, road),
+        ),
+      ),
+    );
+  }
+
+  Marker _stationMarker(WeatherStation station, DrsiStation? road, int bucket) {
     final size = widget.thumbnailSize;
-    final road = _roadByStation[station.stationId];
     final thumb = size != null && station.cameraLink.isNotEmpty
         ? station.cameraUrlWithBuster(bucket)
         : null;
     final pinWidth = TemperatureMarker.pinWidth(
-      hasWeather: station.hasWeather,
+      hasWeather: station.temperatureC != null,
       hasRoad: road != null,
     );
+    final key = 'st:${station.stationId}';
     return Marker(
-      key: ValueKey('st:${station.stationId}'),
+      key: ValueKey(key),
       point: station.position,
       width: thumb != null && size != null
           ? math.max(size.width, pinWidth)
           : pinWidth,
-      height: 46 + (thumb != null && size != null ? size.extent : 0),
+      height:
+          MapPinStyle.pinHeight +
+          6 +
+          (thumb != null && size != null ? size.extent : 0),
       // Bottom of the box (the pointer tip) sits on the coordinate.
       alignment: Alignment.topCenter,
-      child: TemperatureMarker(
-        station: station,
-        road: road,
-        thumbnailUrl: thumb,
-        thumbnailSize: size ?? ThumbnailSize.small,
-        onTap: () => widget.onTap(station, road),
+      child: MapPopIn(
+        id: key,
+        seen: _seen,
+        alignment: Alignment.bottomCenter,
+        child: TemperatureMarker(
+          station: station,
+          road: road,
+          thumbnailUrl: thumb,
+          thumbnailSize: size ?? ThumbnailSize.small,
+          onTap: () => widget.onTap(station, road),
+        ),
       ),
     );
   }
@@ -1530,6 +2014,9 @@ class _EventsLayerState extends ConsumerState<_EventsLayer> {
   List<TrafficEvent>? _source;
   String _filter = '';
   List<TrafficEvent> _visible = const [];
+
+  /// Pins already shown once; they don't pop in again after culling.
+  final Set<Object> _seen = {};
 
   @override
   Widget build(BuildContext context) {
@@ -1552,10 +2039,14 @@ class _EventsLayerState extends ConsumerState<_EventsLayer> {
             point: event.position,
             width: _minPinHitSize,
             height: _minPinHitSize,
-            child: EventMarker(
-              event: event,
-              hitSize: _minPinHitSize,
-              onTap: () => showEventSheet(context, event),
+            child: MapPopIn(
+              id: event.id,
+              seen: _seen,
+              child: EventMarker(
+                event: event,
+                hitSize: _minPinHitSize,
+                onTap: () => showEventSheet(context, event),
+              ),
             ),
           ),
       ],
