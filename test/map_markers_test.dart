@@ -34,14 +34,14 @@ Widget _host(Widget child, {double textScale = 1}) => MaterialApp(
 
 void main() {
   group('BaseMap.resolveSaved', () {
-    test('new users get the calm map', () {
+    test('new users get the satellite map', () {
       expect(
         BaseMap.resolveSaved(
           id: null,
           legacySeznam: null,
           seznamAvailable: true,
         ),
-        BaseMap.calm,
+        BaseMap.satellite,
       );
     });
 
@@ -67,11 +67,11 @@ void main() {
     test('the new key wins over the legacy one', () {
       expect(
         BaseMap.resolveSaved(
-          id: BaseMap.calm.id,
+          id: BaseMap.satellite.id,
           legacySeznam: true,
           seznamAvailable: true,
         ),
-        BaseMap.calm,
+        BaseMap.satellite,
       );
       expect(
         BaseMap.resolveSaved(
@@ -83,10 +83,10 @@ void main() {
       );
     });
 
-    test('unknown ids and unavailable Seznam fall back to calm', () {
+    test('unknown ids and unavailable Seznam fall back to satellite', () {
       expect(
         BaseMap.resolveSaved(id: 99, legacySeznam: null, seznamAvailable: true),
-        BaseMap.calm,
+        BaseMap.satellite,
       );
       expect(
         BaseMap.resolveSaved(
@@ -94,15 +94,19 @@ void main() {
           legacySeznam: null,
           seznamAvailable: false,
         ),
-        BaseMap.calm,
+        BaseMap.satellite,
       );
     });
 
-    test('ids are unique and calm uses CARTO with a dark style', () {
+    test('ids are unique and satellite is Esri imagery with overlays', () {
       expect(BaseMap.values.map((b) => b.id).toSet(), hasLength(3));
-      expect(BaseMap.calm.urlTemplate, contains('cartocdn.com'));
-      expect(BaseMap.calm.darkUrlTemplate, contains('dark_all'));
-      expect(BaseMap.calm.subdomains, ['a', 'b', 'c', 'd']);
+      expect(BaseMap.satellite.urlTemplate, contains('World_Imagery'));
+      expect(BaseMap.satellite.overlayUrlTemplates, hasLength(2));
+      // The retired CARTO map's id falls back to satellite.
+      expect(
+        BaseMap.resolveSaved(id: 2, legacySeznam: null, seznamAvailable: true),
+        BaseMap.satellite,
+      );
     });
   });
 

@@ -5,20 +5,22 @@ import 'package:flutter_map/flutter_map.dart';
 import '../services/map_tile_cache_service.dart';
 import '../services/prefs.dart';
 
-/// Base map tile sources: a muted CARTO map (the default, so pins stand out),
-/// and the OpenStreetMap and Seznam.cz / Mapy.cz tourist maps from gozdar
+/// Base map tile sources: Esri satellite imagery with road and place-name
+/// overlays (the default), and the OpenStreetMap and Seznam.cz / Mapy.cz tourist maps from gozdar
 /// (`MapLayer.openStreetMap`, `MapLayer.openTopoMap`).
 enum BaseMap {
-  /// CARTO Voyager in light mode, CARTO Dark Matter in dark mode.
-  calm(
-    id: 2,
-    label: 'Umirjena',
-    urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    darkUrlTemplate:
-        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '© OpenStreetMap, © CARTO',
-    subdomains: ['a', 'b', 'c', 'd'],
-    retina: true,
+  /// Esri World Imagery, with Esri's road and place-name reference layers
+  /// drawn on top (see [buildBaseOverlayLayers]).
+  satellite(
+    id: 3,
+    label: 'Satelit',
+    urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    overlayUrlTemplates: [
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    ],
+    attribution:
+        'Esri, Maxar, Earthstar Geographics, and the GIS User Community',
   ),
   openStreetMap(
     id: 0,
@@ -40,10 +42,8 @@ enum BaseMap {
     required this.label,
     required this.urlTemplate,
     required this.attribution,
-    this.darkUrlTemplate,
+    this.overlayUrlTemplates = const [],
     this.headers = const {},
-    this.subdomains = const [],
-    this.retina = false,
   });
 
   /// Stable id stored in preferences (independent of declaration order).
@@ -51,16 +51,10 @@ enum BaseMap {
   final String label;
   final String urlTemplate;
 
-  /// Tiles drawn for dark mode instead of [urlTemplate], when the source has
-  /// its own dark style (otherwise the tiles are inverted, see
-  /// [buildBaseTileLayer]).
-  final String? darkUrlTemplate;
+  /// Transparent label/road layers drawn above the base tiles.
+  final List<String> overlayUrlTemplates;
   final String attribution;
   final Map<String, String> headers;
-  final List<String> subdomains;
-
-  /// The server has `@2x` tiles behind the `{r}` placeholder.
-  final bool retina;
 
   /// Browsers do not let a page set the Referer mapy.cz requires, so the
   /// Seznam map only works in the native apps.
@@ -74,11 +68,11 @@ enum BaseMap {
 
   static const _prefKey = 'map.base';
 
-  /// The user's saved base map choice ([calm] when nothing was chosen).
-  /// The pre-calm Seznam/OSM flag (`map.baseSeznam`) is deliberately not
-  /// carried over: everyone starts on the calm map once.
+  /// The user's saved base map choice ([satellite] when nothing was chosen).
+  /// The older Seznam/OSM flag (`map.baseSeznam`) and the retired CARTO map
+  /// (id 2) are deliberately not carried over: everyone starts on satellite.
   static BaseMap get saved => resolveSaved(
-    id: Prefs.has(_prefKey) ? Prefs.getInt(_prefKey, calm.id) : null,
+    id: Prefs.has(_prefKey) ? Prefs.getInt(_prefKey, satellite.id) : null,
     legacySeznam: null,
     seznamAvailable: seznamAvailable,
   );
@@ -87,7 +81,7 @@ enum BaseMap {
 
   /// Picks the base map from the stored [id], falling back to the legacy
   /// Seznam/OpenStreetMap flag so an older explicit choice keeps working,
-  /// and to [calm] for new users or an unavailable map.
+  /// and to [satellite] for new users or an unavailable map.
   @visibleForTesting
   static BaseMap resolveSaved({
     required int? id,
@@ -96,13 +90,13 @@ enum BaseMap {
   }) {
     BaseMap choice;
     if (id != null) {
-      choice = values.firstWhere((b) => b.id == id, orElse: () => calm);
+      choice = values.firstWhere((b) => b.id == id, orElse: () => satellite);
     } else if (legacySeznam != null) {
       choice = legacySeznam ? seznam : openStreetMap;
     } else {
-      choice = calm;
+      choice = satellite;
     }
-    if (choice == seznam && !seznamAvailable) return calm;
+    if (choice == seznam && !seznamAvailable) return satellite;
     return choice;
   }
 }
@@ -110,24 +104,18 @@ enum BaseMap {
 /// Native max zoom of the tile servers; the map may overzoom beyond it.
 const double _nativeMaxZoom = 19;
 
-/// The base tile layer for [base]. CARTO has its own dark style; in dark
-/// mode OpenStreetMap is drawn with flutter_map's dark (inverted) filter.
+/// The base tile layer for [base]. In dark mode OpenStreetMap is drawn with
+/// flutter_map's dark (inverted) filter; satellite imagery stays as it is.
 TileLayer buildBaseTileLayer(
   BuildContext context, {
-  BaseMap base = BaseMap.calm,
+  BaseMap base = BaseMap.satellite,
   required bool isDark,
 }) {
   if (base == BaseMap.seznam && !BaseMap.seznamAvailable) {
-    base = BaseMap.calm;
+    base = BaseMap.satellite;
   }
   return TileLayer(
-    urlTemplate: isDark
-        ? base.darkUrlTemplate ?? base.urlTemplate
-        : base.urlTemplate,
-    subdomains: base.subdomains,
-    // Only for servers with real @2x tiles: on others flutter_map would
-    // simulate retina by fetching one zoom level deeper.
-    retinaMode: base.retina && RetinaMode.isHighDensity(context),
+    urlTemplate: base.urlTemplate,
     tileProvider: MapTileCacheService.instance.createTileProvider(
       headers: base.headers,
     ),
@@ -155,3 +143,14 @@ Widget buildBaseMapAttribution(
     ),
   );
 }
+
+/// Reference overlays (roads, place names) for [base]; empty for most maps.
+List<TileLayer> buildBaseOverlayLayers(BaseMap base) => [
+  for (final url in base.overlayUrlTemplates)
+    TileLayer(
+      urlTemplate: url,
+      tileProvider: MapTileCacheService.instance.createTileProvider(),
+      userAgentPackageName: 'dev.dz0ny.promet',
+      maxNativeZoom: _nativeMaxZoom.toInt(),
+    ),
+];

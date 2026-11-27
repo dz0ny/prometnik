@@ -81,7 +81,7 @@ class MapTabState extends ConsumerState<MapTab> {
   static int? _clusterZoomFor(double zoom) =>
       zoom >= _clusterMaxZoom ? null : zoom.floor();
 
-  // Base map tiles: the calm CARTO map, OpenStreetMap or Seznam (Mapy.cz).
+  // Base map tiles: Esri satellite, OpenStreetMap or Seznam (Mapy.cz).
   BaseMap _baseMap = BaseMap.saved;
 
   void _setBaseMap(BaseMap base) {
@@ -635,6 +635,7 @@ class MapTabState extends ConsumerState<MapTab> {
                 ),
                 children: [
                   buildBaseTileLayer(context, base: _baseMap, isDark: isDark),
+                  ...buildBaseOverlayLayers(_baseMap),
                   // Affected-area roads for the visible events (under markers).
                   if (_eventRoads.isNotEmpty)
                     GestureDetector(
