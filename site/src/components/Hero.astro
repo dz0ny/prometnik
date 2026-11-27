@@ -1,8 +1,8 @@
 ---
 import { Picture } from "astro:assets";
 import { Download, ArrowDown } from "lucide-react";
-import stationShot from "@/assets/screens/01-postaja.webp";
-import mapShot from "@/assets/screens/02-karta.webp";
+import mapShot from "@/assets/screens/02-karta-dogodki.webp";
+import stationShot from "@/assets/screens/05-iga-vas.webp";
 import { LATEST_RELEASE_URL } from "@/lib/site";
 ---
 
@@ -42,13 +42,13 @@ import { LATEST_RELEASE_URL } from "@/lib/site";
       <div class="relative ml-auto w-[70%] sm:w-[66%]">
         <div class="entrance entrance-2 overflow-hidden rounded-[2.2rem] border-[6px] border-muted bg-black shadow-2xl shadow-black/70">
           <Picture
-            src={stationShot}
+            src={mapShot}
             formats={["webp"]}
             fallbackFormat="webp"
             width={300}
             widths={[260, 300, 600]}
             sizes="(min-width: 1024px) 300px, 66vw"
-            alt="Postaja Babno Polje v aplikaciji: nočna slika kamere, trak zadnjih 24 ur, temperatura zraka −2,0 °C z dnevnim razponom in graf temperature"
+            alt="Pregledna karta Slovenije z vsemi dogodki na cestah: zapore, opozorila, burja in omejitve za tovornjake"
             loading="eager"
             fetchpriority="high"
             class="block h-auto w-full"
@@ -58,13 +58,13 @@ import { LATEST_RELEASE_URL } from "@/lib/site";
       <div class="entrance entrance-4 absolute -bottom-8 left-0 w-[50%] -rotate-[5deg] sm:w-[46%]">
         <div class="overflow-hidden rounded-[1.8rem] border-[5px] border-muted bg-black shadow-2xl shadow-black/80">
           <Picture
-            src={mapShot}
+            src={stationShot}
             formats={["webp"]}
             fallbackFormat="webp"
             width={220}
             widths={[200, 220, 440]}
             sizes="(min-width: 1024px) 220px, 46vw"
-            alt="Karta okolice Ljubljane z oznakami temperature, kamer in zapore ter odprta postaja Dragomer"
+            alt="Postaja Iga vas ob 12.00: zasneženi travniki, cesta je čista in mokra, temperatura 0,1 °C"
             loading="eager"
             class="block h-auto w-full"
           />

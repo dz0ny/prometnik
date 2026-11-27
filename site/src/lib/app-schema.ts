@@ -1,5 +1,5 @@
 import type { SoftwareApplication, WithContext } from "schema-dts";
-import screen from "@/assets/screens/01-postaja.webp";
+import screen from "@/assets/screens/05-iga-vas.webp";
 import { LATEST_RELEASE_URL, SITE_DESCRIPTION, SITE_NAME } from "./site";
 
 /** SoftwareApplication JSON-LD for the homepage: free Android app, Slovenian. */
