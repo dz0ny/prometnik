@@ -11,7 +11,4 @@ class AppRoutes {
   static const list = '/list';
   static const times = '/times';
   static const nearby = '/nearby';
-
-  // Station detail (nested under the list branch)
-  static String stationDetail(int id) => '/list/station/$id';
 }

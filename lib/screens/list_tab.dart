@@ -1,7 +1,6 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/traffic_camera.dart';
@@ -10,7 +9,6 @@ import '../providers/cameras_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/feed.dart';
 import '../providers/weather_provider.dart';
-import '../router/route_names.dart';
 import '../services/prefs.dart';
 import '../theme/app_theme.dart';
 import '../widgets/camera_sheet.dart';
@@ -18,6 +16,7 @@ import '../widgets/filter_sheet.dart';
 import '../widgets/webcam_image.dart';
 import '../widgets/weather_details.dart';
 import '../widgets/live_webcam_image.dart';
+import '../widgets/station_sheet.dart';
 
 /// Section title for the favourites group, rendered as full-width webcam cards.
 const String _kFavoritesTitle = '★ Priljubljene';
@@ -508,7 +507,7 @@ class _StationRow extends ConsumerWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => context.go(AppRoutes.stationDetail(station.stationId)),
+      onTap: () => showStationSheet(context, station.stationId, pairRoad: true),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
         child: Row(
@@ -608,7 +607,7 @@ class _FavoriteHeroCard extends ConsumerWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => context.go(AppRoutes.stationDetail(station.stationId)),
+      onTap: () => showStationSheet(context, station.stationId, pairRoad: true),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: AspectRatio(

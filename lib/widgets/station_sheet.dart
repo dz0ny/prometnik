@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../models/drsi_station.dart';
 import '../models/weather_station.dart';
@@ -14,12 +15,41 @@ import 'interactive_webcam.dart';
 import 'station_overview.dart';
 import 'weather_details.dart';
 
-/// Opens the station detail sheet for [stationId].
-void showStationSheet(BuildContext context, int stationId, {String? roadId}) {
+/// Opens the station detail sheet for [stationId]. Without [roadId] the
+/// nearest DRSI road station (if any) is shown alongside when [pairRoad].
+void showStationSheet(
+  BuildContext context,
+  int stationId, {
+  String? roadId,
+  bool pairRoad = false,
+}) {
   showAppSheet<void>(
     context,
-    builder: (_) => StationSheet(stationId: stationId, roadId: roadId),
+    builder: (_) =>
+        StationSheet(stationId: stationId, roadId: roadId, pairRoad: pairRoad),
   );
+}
+
+/// The DRSI road station within [meters] of [at] (the map pairs pins within
+/// the same distance), nearest first; null if none.
+DrsiStation? nearestRoadStation(
+  LatLng at,
+  List<DrsiStation> roads, {
+  double meters = 400,
+}) {
+  const distance = Distance();
+  DrsiStation? best;
+  var bestD = meters;
+  for (final r in roads) {
+    // Cheap reject before the exact distance.
+    if ((r.position.latitude - at.latitude).abs() > 0.01) continue;
+    final d = distance(at, r.position);
+    if (d <= bestD) {
+      bestD = d;
+      best = r;
+    }
+  }
+  return best;
 }
 
 /// Opens the same sheet for a DRSI road station with no weather station
@@ -43,8 +73,16 @@ class StationSheet extends ConsumerStatefulWidget {
   /// shown in the same sheet.
   final String? roadId;
 
-  const StationSheet({super.key, this.stationId, this.roadId})
-    : assert(stationId != null || roadId != null);
+  /// Without [roadId], look up the nearest road station (lists, which have
+  /// no map pairing).
+  final bool pairRoad;
+
+  const StationSheet({
+    super.key,
+    this.stationId,
+    this.roadId,
+    this.pairRoad = false,
+  }) : assert(stationId != null || roadId != null);
 
   @override
   ConsumerState<StationSheet> createState() => _StationSheetState();
@@ -76,19 +114,28 @@ class _StationSheetState extends ConsumerState<StationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final road = roadId == null
+    final id = stationId;
+    final weatherStation = id == null
         ? null
-        : ref.watch(
+        : ref.watch(weatherProvider.select((s) => s.byId(id)));
+    final road = roadId != null
+        ? ref.watch(
             drsiProvider.select<DrsiStation?>((p) {
               for (final s in p.items) {
                 if (s.id == roadId) return s;
               }
               return null;
             }),
-          );
-    final id = stationId;
+          )
+        : widget.pairRoad && weatherStation != null
+        ? ref.watch(
+            drsiProvider.select(
+              (p) => nearestRoadStation(weatherStation.position, p.items),
+            ),
+          )
+        : null;
     final station = id != null
-        ? ref.watch(weatherProvider.select((s) => s.byId(id)))
+        ? weatherStation
         : road == null
         ? null
         // A lone road station: its camera and no air reading.

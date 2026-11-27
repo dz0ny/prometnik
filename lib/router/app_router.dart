@@ -7,7 +7,6 @@ import '../screens/intro_wizard_screen.dart';
 import '../screens/map_tab.dart';
 import '../screens/nearby_tab.dart';
 import '../screens/travel_times_tab.dart';
-import '../screens/station_detail_screen.dart';
 import '../widgets/main_scaffold.dart';
 import 'route_names.dart';
 
@@ -69,20 +68,6 @@ GoRouter createRouter({bool showOnboarding = false}) {
               GoRoute(
                 path: AppRoutes.list,
                 builder: (context, state) => const ListTab(),
-                routes: [
-                  GoRoute(
-                    path: 'station/:id',
-                    // A malformed id (e.g. a hand-edited web URL) must not
-                    // throw inside the page builder.
-                    redirect: (context, state) =>
-                        int.tryParse(state.pathParameters['id'] ?? '') == null
-                        ? AppRoutes.list
-                        : null,
-                    builder: (context, state) => StationDetailScreen(
-                      stationId: int.parse(state.pathParameters['id']!),
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
