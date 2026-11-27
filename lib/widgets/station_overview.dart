@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/drsi_station.dart';
 import '../models/weather_station.dart';
@@ -18,7 +19,16 @@ class StationOverview extends StatefulWidget {
   final WeatherStation station;
   final DrsiStation? road;
 
-  const StationOverview({super.key, required this.station, this.road});
+  /// Tests: use this series instead of fetching it.
+  @visibleForTesting
+  final List<WeatherPoint>? historyOverride;
+
+  const StationOverview({
+    super.key,
+    required this.station,
+    this.road,
+    this.historyOverride,
+  });
 
   @override
   State<StationOverview> createState() => _StationOverviewState();
@@ -43,6 +53,10 @@ class _StationOverviewState extends State<StationOverview> {
   }
 
   void _load() {
+    if (widget.historyOverride != null) {
+      _history = widget.historyOverride!;
+      return;
+    }
     if (!widget.station.hasWeather) return;
     final id = widget.station.stationId;
     final svc = WeatherHistoryService.instance;
@@ -292,27 +306,77 @@ class _RiskBanner extends StatelessWidget {
 
 /// 24-hour air temperature chart; until at least two hourly points exist it
 /// shows today's min–max range with the current value marked.
-class _TemperatureHistoryCard extends StatelessWidget {
+/// One chart point: an hourly reading, or the current one (last).
+typedef _ChartPoint = ({DateTime at, double t, double? h, double? w});
+
+/// 24-hour air temperature chart. Tap or drag across it to read any hour;
+/// until at least three points exist it shows today's min–max range.
+class _TemperatureHistoryCard extends StatefulWidget {
   final WeatherReading reading;
   final List<WeatherPoint> history;
 
   const _TemperatureHistoryCard({required this.reading, required this.history});
 
   @override
+  State<_TemperatureHistoryCard> createState() =>
+      _TemperatureHistoryCardState();
+}
+
+class _TemperatureHistoryCardState extends State<_TemperatureHistoryCard> {
+  int? _selected;
+
+  List<_ChartPoint> _points() {
+    final r = widget.reading;
+    return [
+      for (final p in widget.history)
+        if (p.tempC != null)
+          (at: p.at, t: p.tempC!, h: p.humidity, w: p.windKmh),
+      if (r.outdoorTemperatureC != null)
+        (
+          at: DateTime.now(),
+          t: r.outdoorTemperatureC!,
+          h: r.humidityPercentage?.toDouble(),
+          w: r.windSpeedKmh,
+        ),
+    ];
+  }
+
+  /// Nearest point to horizontal position [dx] inside a chart [width] wide.
+  void _selectAt(double dx, double width, List<_ChartPoint> points) {
+    final chartWidth = width - _TempChartPainter.leftPad;
+    if (chartWidth <= 0) return;
+    final t0 = points.first.at.millisecondsSinceEpoch;
+    final t1 = points.last.at.millisecondsSinceEpoch;
+    final f = ((dx - _TempChartPainter.leftPad) / chartWidth).clamp(0.0, 1.0);
+    final target = t0 + (t1 - t0) * f;
+    var best = 0;
+    for (var i = 1; i < points.length; i++) {
+      if ((points[i].at.millisecondsSinceEpoch - target).abs() <
+          (points[best].at.millisecondsSinceEpoch - target).abs()) {
+        best = i;
+      }
+    }
+    if (best != _selected) {
+      HapticFeedback.selectionClick();
+      setState(() => _selected = best);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final now = reading.outdoorTemperatureC;
-    final points = [
-      for (final p in history)
-        if (p.tempC != null) (at: p.at, t: p.tempC!),
-      if (now != null) (at: DateTime.now(), t: now),
-    ];
+    final r = widget.reading;
+    final now = r.outdoorTemperatureC;
+    final points = _points();
     final hasChart = points.length >= 3;
-    final lo = reading.minOutdoorTemperatureC;
-    final hi = reading.maxOutdoorTemperatureC;
+    final lo = r.minOutdoorTemperatureC;
+    final hi = r.maxOutdoorTemperatureC;
     if (!hasChart && (lo == null || hi == null || now == null)) {
       return const SizedBox.shrink();
     }
+    final sel = _selected != null && _selected! < points.length
+        ? _selected
+        : null;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
@@ -328,27 +392,44 @@ class _TemperatureHistoryCard extends StatelessWidget {
             children: [
               Icon(Icons.show_chart, size: 15, color: cs.onSurfaceVariant),
               const SizedBox(width: 6),
-              Text(
-                hasChart ? 'Temperatura · zadnjih 24 ur' : 'Temperatura danes',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  hasChart ? 'Temperatura · 24 ur' : 'Temperatura danes',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
+              if (hasChart) _readout(cs, points[sel ?? points.length - 1], sel),
             ],
           ),
           const SizedBox(height: 8),
           if (hasChart)
-            SizedBox(
-              height: 84,
-              child: CustomPaint(
-                size: Size.infinite,
-                painter: _TempChartPainter(
-                  points: points,
-                  line: cs.primary,
-                  grid: cs.outlineVariant,
-                  label: cs.onSurfaceVariant,
+            LayoutBuilder(
+              builder: (context, c) => GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (d) =>
+                    _selectAt(d.localPosition.dx, c.maxWidth, points),
+                onHorizontalDragStart: (d) =>
+                    _selectAt(d.localPosition.dx, c.maxWidth, points),
+                onHorizontalDragUpdate: (d) =>
+                    _selectAt(d.localPosition.dx, c.maxWidth, points),
+                child: SizedBox(
+                  key: const ValueKey('temperature-chart'),
+                  height: 96,
+                  width: c.maxWidth,
+                  child: CustomPaint(
+                    painter: _TempChartPainter(
+                      points: points,
+                      selected: sel,
+                      line: cs.primary,
+                      grid: cs.outlineVariant,
+                      label: cs.onSurfaceVariant,
+                      marker: cs.onSurface,
+                    ),
+                  ),
                 ),
               ),
             )
@@ -361,6 +442,47 @@ class _TemperatureHistoryCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// "22:00 · 0,4 °C · 95 % · 4 km/h" for the selected hour, "zdaj · …" for
+  /// the current reading.
+  Widget _readout(ColorScheme cs, _ChartPoint p, int? sel) {
+    final when = sel == null
+        ? 'zdaj'
+        : '${p.at.hour.toString().padLeft(2, '0')}:00';
+    final extras = [
+      if (p.h != null && p.h! > 0) '${p.h!.round()} %',
+      if (p.w != null) '${p.w!.round()} km/h',
+    ];
+    return Flexible(
+      flex: 2,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$when  ',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+            TextSpan(
+              text: WeatherFormat.temp(p.t),
+              style: TextStyle(
+                color: sel == null ? cs.onSurface : cs.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            if (extras.isNotEmpty)
+              TextSpan(
+                text: '  ${extras.join(' · ')}',
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.right,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -431,21 +553,26 @@ class _RangeBar extends StatelessWidget {
 }
 
 class _TempChartPainter extends CustomPainter {
-  final List<({DateTime at, double t})> points;
+  static const double leftPad = 30;
+
+  final List<_ChartPoint> points;
+  final int? selected;
   final Color line;
   final Color grid;
   final Color label;
+  final Color marker;
 
   _TempChartPainter({
     required this.points,
+    required this.selected,
     required this.line,
     required this.grid,
     required this.label,
+    required this.marker,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    const leftPad = 30.0;
     const bottomPad = 14.0;
     final chart = Rect.fromLTRB(
       leftPad,
@@ -536,6 +663,34 @@ class _TempChartPainter extends CustomPainter {
     final last = Offset(x(points.last.at), y(points.last.t));
     canvas.drawCircle(last, 3.5, Paint()..color = line);
 
+    // Hour dots, and the selected hour's guide line.
+    final dot = Paint()..color = line.withValues(alpha: .55);
+    for (final p in points.take(points.length - 1)) {
+      canvas.drawCircle(Offset(x(p.at), y(p.t)), 1.8, dot);
+    }
+    final sel = selected;
+    if (sel != null) {
+      final p = points[sel];
+      final at = Offset(x(p.at), y(p.t));
+      canvas.drawLine(
+        Offset(at.dx, chart.top),
+        Offset(at.dx, chart.bottom),
+        Paint()
+          ..color = marker.withValues(alpha: .5)
+          ..strokeWidth = 1,
+      );
+      canvas.drawCircle(at, 6, Paint()..color = line.withValues(alpha: .25));
+      canvas.drawCircle(at, 4, Paint()..color = line);
+      canvas.drawCircle(
+        at,
+        4,
+        Paint()
+          ..color = marker
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
+    }
+
     // Time axis: start, middle, now.
     String hh(DateTime d) => '${d.hour.toString().padLeft(2, '0')}h';
     final axisY = size.height - bottomPad / 2 + 2;
@@ -547,10 +702,10 @@ class _TempChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TempChartPainter old) =>
-      !identical(old.points, points) &&
-      (old.points.length != points.length ||
-          old.points.last.t != points.last.t ||
-          old.line != line);
+      old.selected != selected ||
+      old.points.length != points.length ||
+      old.points.last.t != points.last.t ||
+      old.line != line;
 }
 
 class _Stat {

@@ -69,4 +69,55 @@ void main() {
       expect(tester.takeException(), isNull);
     }
   });
+
+  testWidgets('tapping the chart selects an hour and shows its value', (
+    tester,
+  ) async {
+    final station = WeatherStation.fromJson({
+      'stationId': 999002,
+      'name': 'Test',
+      'coordinateX': 46.0,
+      'coordinateY': 14.5,
+      'cameraLink': '',
+      'weather': {
+        'outdoorTemperatureC': 2.0,
+        'minOutdoorTemperatureC': -1.0,
+        'maxOutdoorTemperatureC': 4.0,
+      },
+    });
+    final now = DateTime.now();
+    DateTime h(int back) => DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+    ).subtract(Duration(hours: back));
+    final history = [
+      WeatherPoint(at: h(3), tempC: -1.0, humidity: 90, windKmh: 5),
+      WeatherPoint(at: h(2), tempC: 0.5),
+      WeatherPoint(at: h(1), tempC: 1.5),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: StationOverview(station: station, historyOverride: history),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.textContaining('zdaj'), findsOneWidget);
+    // Tap the far left of the chart: the oldest hour.
+    final chart = find.byKey(const ValueKey('temperature-chart'));
+    final topLeft = tester.getTopLeft(chart);
+    await tester.tapAt(topLeft + const Offset(32, 40));
+    await tester.pump();
+    final hh = '${h(3).hour.toString().padLeft(2, '0')}:00';
+    expect(find.textContaining(hh), findsOneWidget);
+    expect(find.textContaining('-1,0 °C'), findsOneWidget);
+    expect(find.textContaining('90 %'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
