@@ -121,22 +121,30 @@ class WebcamStore {
     final key = cameraKey(url);
     // The edge cache answers first; the camera itself is only a fallback for
     // when the proxy is unreachable or failing.
-    var bytes = await _getImage(url, key);
+    var image = await _getImage(url, key);
     final direct = directWebcamUrl(url);
-    if (bytes == null && direct != null) {
+    if (image == null && direct != null) {
       debugPrint('WebcamStore: proxy failed for $key, trying the camera');
-      bytes = await _getImage(direct, key);
+      image = await _getImage(direct, key);
     }
-    if (bytes == null) return null;
+    if (image == null) return null;
     final now = DateTime.now();
-    final frame = WebcamFrame(bytes, now);
+    // The proxy may answer with an older cached copy; date the frame by when
+    // it was really taken so it lands in the right hour.
+    final frame = WebcamFrame(image.bytes, image.at ?? now);
+    // Never replace a newer frame with an older cached copy.
+    final known = _latest[key];
+    if (known != null && known.at.isAfter(frame.at)) return known;
     _remember(key, frame);
     _lastFetch[key] = now;
     unawaited(_persist(key, frame));
     return frame;
   }
 
-  Future<Uint8List?> _getImage(String url, String key) async {
+  Future<({Uint8List bytes, DateTime? at})?> _getImage(
+    String url,
+    String key,
+  ) async {
     try {
       final res = await _http.get(Uri.parse(url)).timeout(_timeout);
       final type = res.headers['content-type'] ?? '';
@@ -144,7 +152,7 @@ class WebcamStore {
         debugPrint('WebcamStore: $key answered ${res.statusCode} $type');
         return null;
       }
-      return res.bodyBytes;
+      return (bytes: res.bodyBytes, at: frameTakenAt(res.headers));
     } on Exception catch (e) {
       debugPrint('WebcamStore.fetch($key): $e');
       return null;
@@ -201,7 +209,7 @@ class WebcamStore {
   }
 
   /// Local hourly snapshots merged with the worker's hourly snapshots for
-  /// [url], oldest first. Local bytes win for an hour both have; when the
+  /// [url], oldest first. The worker's snapshot wins for an hour both have; when the
   /// worker can't be reached this is just the local history.
   Future<List<WebcamHistoryEntry>> mergedHistory(String url) async {
     final results = await Future.wait([
@@ -359,8 +367,9 @@ List<ServerSnapshot> parseServerHistory(String body) {
 /// Merges device-local hourly [local] frames with the worker's [server]
 /// snapshots into one entry per hour, oldest first, covering the
 /// [WebcamStore.historyHours] hours up to [now]. Hours are matched as
-/// instants (server UTC hour vs local hour); local bytes win when both
-/// have an hour. Entry times are local.
+/// instants (server UTC hour vs local hour); the worker's snapshot wins when
+/// both have an hour (it is taken on the hour by the cron, while a device
+/// frame may be an older cached copy). Entry times are local.
 List<WebcamHistoryEntry> mergeWebcamHistory(
   List<WebcamFrame> local,
   List<ServerSnapshot> server, {
@@ -386,10 +395,24 @@ List<WebcamHistoryEntry> mergeWebcamHistory(
   for (final f in local) {
     final b = bucket(f.at);
     if (!inRange(b)) continue;
-    byHour[b] = WebcamHistoryEntry(at: localAt(b), bytes: f.bytes);
+    byHour.putIfAbsent(
+      b,
+      () => WebcamHistoryEntry(at: localAt(b), bytes: f.bytes),
+    );
   }
   final keys = byHour.keys.toList()..sort();
   return [for (final k in keys) byHour[k]!];
+}
+
+/// When the proxy says the frame was taken (`X-Cam-At`), as local time.
+@visibleForTesting
+DateTime? frameTakenAt(Map<String, String> headers) {
+  final raw = headers['x-cam-at'];
+  if (raw == null) return null;
+  final at = DateTime.tryParse(raw)?.toLocal();
+  // Ignore clocks running ahead of ours.
+  if (at == null || at.isAfter(DateTime.now())) return null;
+  return at;
 }
 
 @visibleForTesting

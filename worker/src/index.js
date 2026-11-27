@@ -33,6 +33,8 @@ export const ALLOWED_HOSTS = new Set([
 const FRESH_SECONDS = 60;
 const STALE_SECONDS = 86400; // any frame from the last day beats a slow camera
 const ORIGIN_TIMEOUT_MS = 8000;
+// A stale copy older than this loses to a newer hourly snapshot in R2.
+const STALE_PREFER_SNAPSHOT_MS = 10 * 60 * 1000;
 
 /** Validates the `u` parameter; returns the camera URL or null. */
 export function cameraUrl(raw) {
@@ -71,6 +73,7 @@ function withHeaders(res, maxAge, state) {
   out.headers.set('Cache-Control', `public, max-age=${maxAge}`);
   out.headers.set('Access-Control-Allow-Origin', '*');
   out.headers.set('X-Cam-Cache', state);
+  out.headers.set('Access-Control-Expose-Headers', 'X-Cam-At, X-Cam-Cache');
   out.headers.delete('Set-Cookie');
   return out;
 }
@@ -123,8 +126,9 @@ export default {
 /**
  * Serve a camera frame, cache first:
  *  1. fresh edge copy (< FRESH_SECONDS)       → HIT
- *  2. older edge copy (< STALE_SECONDS)       → STALE, refresh in background
- *  3. this/last hour's R2 snapshot            → SNAPSHOT, refresh in background
+ *  2. this/last hour's R2 snapshot, when newer than an edge copy older than
+ *     10 minutes (or there is none)          → SNAPSHOT, refresh in background
+ *  3. older edge copy (< STALE_SECONDS)       → STALE, refresh in background
  *  4. nothing cached anywhere                 → fetch the camera (MISS)
  * Only case 4 waits on the (slow) camera; a camera that's down keeps serving
  * its last good frame.
@@ -139,29 +143,38 @@ async function serveCamera(cam, env, ctx) {
   const refresh = () => refreshFrame(cam, env, keys);
 
   const stale = await cache.match(keys.stale);
+  const staleAt = Date.parse(stale?.headers.get('X-Cam-At') ?? '');
+  // A stale edge copy can be hours old when this location hasn't been asked
+  // for the camera in a while; the cron's hourly snapshot may be newer.
+  const snap =
+    env.SNAPS &&
+    (!stale || !(Date.now() - staleAt < STALE_PREFER_SNAPSHOT_MS))
+      ? await latestSnapshot(env, cam.toString())
+      : null;
+  if (snap && (!stale || !(staleAt >= snap.uploaded.getTime()))) {
+    await stale?.body?.cancel();
+    ctx.waitUntil(refresh().catch(() => {}));
+    return withHeaders(
+      new Response(snap.body, {
+        headers: {
+          'Content-Type': snap.httpMetadata?.contentType || 'image/jpeg',
+          'X-Cam-At': snap.uploaded.toISOString(),
+        },
+      }),
+      15,
+      'SNAPSHOT',
+    );
+  }
+  await snap?.body?.cancel();
   if (stale) {
     ctx.waitUntil(refresh().catch(() => {}));
     return withHeaders(stale, 15, 'STALE');
   }
 
-  if (env.SNAPS) {
-    const snap = await latestSnapshot(env, cam.toString());
-    if (snap) {
-      ctx.waitUntil(refresh().catch(() => {}));
-      return withHeaders(
-        new Response(snap.body, {
-          headers: { 'Content-Type': snap.httpMetadata?.contentType || 'image/jpeg' },
-        }),
-        15,
-        'SNAPSHOT',
-      );
-    }
-  }
-
   try {
-    const { body, type } = await refresh();
+    const { body, type, at } = await refresh();
     return withHeaders(
-      new Response(body, { headers: { 'Content-Type': type } }),
+      new Response(body, { headers: { 'Content-Type': type, 'X-Cam-At': at } }),
       FRESH_SECONDS,
       'MISS',
     );
@@ -178,9 +191,15 @@ async function refreshFrame(cam, env, keys) {
   const origin = await fetchFrame(cam);
   const body = await origin.arrayBuffer();
   const type = origin.headers.get('Content-Type') || 'image/jpeg';
+  // When the frame was fetched, so clients can tell a stale copy's real age.
+  const at = new Date().toISOString();
   const store = (maxAge) =>
     new Response(body, {
-      headers: { 'Content-Type': type, 'Cache-Control': `public, max-age=${maxAge}` },
+      headers: {
+        'Content-Type': type,
+        'Cache-Control': `public, max-age=${maxAge}`,
+        'X-Cam-At': at,
+      },
     });
   const cache = caches.default;
   await Promise.all([
@@ -188,5 +207,5 @@ async function refreshFrame(cam, env, keys) {
     cache.put(keys.stale, store(STALE_SECONDS)),
     env.SNAPS ? storeHourly(env, cam.toString(), body, type) : null,
   ]);
-  return { body, type };
+  return { body, type, at };
 }

@@ -66,18 +66,18 @@ void main() {
       expect(out.first.isLocal, isFalse);
     });
 
-    test('local bytes win for an hour both have', () {
+    test('the worker snapshot wins for an hour both have', () {
       final out = mergeWebcamHistory(
-        [WebcamFrame(bytes, localHour(1))],
+        [WebcamFrame(bytes, localHour(1)), WebcamFrame(bytes, localHour(3))],
         [server(1, 'x'), server(2, 'y')],
         now: now,
       );
-      expect(out, hasLength(2));
-      expect(out[0].url, 'https://w/snap?k=y');
-      expect(out[1].isLocal, isTrue);
-      expect(out[1].bytes, bytes);
-      expect(out[1].url, isNull);
-      expect(out[1].frame!.at, localHour(1));
+      expect(out, hasLength(3));
+      expect(out[0].isLocal, isTrue);
+      expect(out[0].frame!.at, localHour(3));
+      expect(out[1].url, 'https://w/snap?k=y');
+      expect(out[2].url, 'https://w/snap?k=x');
+      expect(out[2].isLocal, isFalse);
     });
 
     test('only the last 24 hours, nothing from the future', () {
@@ -112,7 +112,7 @@ void main() {
         now: now,
       );
       expect(out, hasLength(1));
-      expect(out.single.isLocal, isTrue);
+      expect(out.single.url, 'https://w/snap?k=z');
     });
   });
 }

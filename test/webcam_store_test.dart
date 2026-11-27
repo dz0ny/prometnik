@@ -39,4 +39,17 @@ void main() {
       expect(directWebcamUrl('https://example.com/a.jpg'), isNull);
     },
   );
+
+  test('frames are dated by the proxy capture time when given', () {
+    final at = frameTakenAt({'x-cam-at': '2026-11-27T07:15:57.000Z'});
+    expect(at, DateTime.utc(2026, 11, 27, 7, 15, 57).toLocal());
+    expect(at!.isUtc, isFalse);
+    expect(frameTakenAt({}), isNull);
+    expect(frameTakenAt({'x-cam-at': 'nope'}), isNull);
+    final future = DateTime.now().add(const Duration(hours: 2));
+    expect(
+      frameTakenAt({'x-cam-at': future.toUtc().toIso8601String()}),
+      isNull,
+    );
+  });
 }
