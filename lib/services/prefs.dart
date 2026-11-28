@@ -5,11 +5,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 class Prefs {
   Prefs._();
 
-  static late final SharedPreferences _p;
+  static late SharedPreferences _p;
+  static bool _ready = false;
 
+  /// Safe to call more than once (the background task may run twice in one
+  /// isolate).
   static Future<void> init() async {
+    if (_ready) return;
     _p = await SharedPreferences.getInstance();
+    _ready = true;
   }
+
+  /// Re-read values another isolate (the background task) wrote; each
+  /// isolate keeps its own cached copy.
+  static Future<void> reload() => _p.reload();
 
   static bool has(String key) => _p.containsKey(key);
 
@@ -24,6 +33,6 @@ class Prefs {
 
   static List<String> getStringList(String key, List<String> def) =>
       _p.getStringList(key) ?? def;
-  static void setStringList(String key, List<String> v) =>
+  static Future<bool> setStringList(String key, List<String> v) =>
       _p.setStringList(key, v);
 }

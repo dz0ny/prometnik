@@ -108,7 +108,16 @@ String warningCount(int n) {
 /// Checks the saved routes departing soon and notifies. Runs in the
 /// background task and when the app opens; does nothing (no network) when
 /// no route departs within [departureWindow].
-Future<void> runRouteCheck({DateTime? at}) async {
+Future<void> runRouteCheck({DateTime? at}) =>
+    _running ??= _runRouteCheck(at: at).whenComplete(() => _running = null);
+
+// One check at a time per isolate: startup, resume and the background task
+// may overlap.
+Future<void>? _running;
+
+Future<void> _runRouteCheck({DateTime? at}) async {
+  // The other isolate (app or background task) may have written since.
+  await Prefs.reload();
   final now = at ?? DateTime.now();
   final routes = SavedRoute.decodeList(Prefs.getString(savedRoutesKey));
   final due = [
@@ -122,13 +131,15 @@ Future<void> runRouteCheck({DateTime? at}) async {
         debugPrint('route check: feed failed: $e');
         return <T>[];
       });
+  // The corridors build while the feeds download (background time is short).
+  final corridorsFuture = _corridors();
   final results = await Future.wait([
     safe<TrafficEvent>(EventsService().fetchEvents()),
     safe<DrsiStation>(DrsiService().fetch()),
     safe<BurjaStation>(BurjaService().fetch()),
     safe<TravelTime>(TravelTimesService().fetchTravelTimes()),
   ]);
-  final corridors = await _corridors();
+  final corridors = await corridorsFuture;
   final warnings = {
     for (final r in due)
       r.id: routeWarnings(
@@ -149,22 +160,29 @@ Future<void> runRouteCheck({DateTime? at}) async {
   final notices = routeNotices(due, warnings, now, sent);
   if (notices.isEmpty) return;
   await NotificationsService.instance.init();
-  for (final n in notices) {
-    sent.add(n.key);
-    if (n.title.isEmpty) continue;
-    await NotificationsService.instance.show(
-      id: 'route:${n.key}'.hashCode & 0x7fffffff,
-      title: n.title,
-      body: n.body,
-    );
-  }
   // Forget departures older than two days.
   final cutoff = now.subtract(const Duration(days: 2));
   sent.removeWhere((k) {
     final at = DateTime.tryParse(k.split('@').last.split('|').first);
     return at == null || at.isBefore(cutoff);
   });
-  Prefs.setStringList(_sentKey, sent.toList());
+  for (final n in notices) {
+    if (n.title.isNotEmpty) {
+      try {
+        await NotificationsService.instance.show(
+          id: 'route:${n.key}'.hashCode & 0x7fffffff,
+          title: n.title,
+          body: n.body,
+        );
+      } on Object catch (e) {
+        debugPrint('route check: notification failed: $e');
+        continue;
+      }
+    }
+    // Saved after each one, so a killed task never repeats what it showed.
+    sent.add(n.key);
+    await Prefs.setStringList(_sentKey, sent.toList());
+  }
 }
 
 /// The travel-time corridors, routed on the bundled roads (off the main
@@ -173,7 +191,7 @@ Future<List<Corridor>> _corridors() async {
   try {
     final raw = await rootBundle.loadString('assets/roads.json');
     return await compute(_buildCorridors, raw);
-  } on Exception catch (e) {
+  } on Object catch (e) {
     debugPrint('route check: corridors failed: $e');
     return const [];
   }

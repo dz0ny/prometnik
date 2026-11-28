@@ -66,7 +66,7 @@ void routeCheckDispatcher() {
     try {
       await Prefs.init();
       await runRouteCheck();
-    } on Exception catch (e) {
+    } on Object catch (e) {
       debugPrint('background route check failed: $e');
     }
     return true;

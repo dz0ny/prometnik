@@ -122,13 +122,17 @@ class _RouteCard extends StatelessWidget {
                     Text(
                       warnings.isEmpty
                           ? 'Brez opozoril'
-                          : warnings.length == 1
-                          ? warnings.first.title
-                          : '${warnings.first.title} in še ${warnings.length - 1}',
+                          : [
+                              severityLabel(worst),
+                              warnings.length == 1
+                                  ? warnings.first.title
+                                  : '${warnings.first.title} in še ${warnings.length - 1}',
+                            ].join(': '),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
+                      // Text in the readable colour; the icon carries the hue.
                       style: TextStyle(
-                        color: worst == 0 ? cs.onSurfaceVariant : color,
+                        color: worst == 0 ? cs.onSurfaceVariant : cs.onSurface,
                         fontWeight: FontWeight.w600,
                         fontSize: 13.5,
                       ),
@@ -145,6 +149,14 @@ class _RouteCard extends StatelessWidget {
   }
 }
 
+/// Words for a severity, so it is never shown by colour alone.
+String severityLabel(int severity) => switch (severity) {
+  0 => 'Brez opozoril',
+  1 => 'Obvestilo',
+  2 => 'Opozorilo',
+  _ => 'Resno',
+};
+
 /// Colour for a warning severity (0 = all clear).
 Color severityColor(ColorScheme cs, int severity) => switch (severity) {
   0 => const Color(0xFF2E9E5B),
@@ -156,8 +168,9 @@ Color severityColor(ColorScheme cs, int severity) => switch (severity) {
 /// "pon 07:30", or "danes 07:30" / "jutri 07:30".
 String departureLabel(DateTime at, {DateTime? now}) {
   final n = now ?? DateTime.now();
-  final today = DateTime(n.year, n.month, n.day);
-  final day = DateTime(at.year, at.month, at.day);
+  // UTC dates: a local DST day is 23 or 25 hours long.
+  final today = DateTime.utc(n.year, n.month, n.day);
+  final day = DateTime.utc(at.year, at.month, at.day);
   final diff = day.difference(today).inDays;
   const names = ['pon', 'tor', 'sre', 'čet', 'pet', 'sob', 'ned'];
   final d = diff == 0 ? 'danes' : (diff == 1 ? 'jutri' : names[at.weekday - 1]);

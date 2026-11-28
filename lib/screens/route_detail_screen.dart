@@ -1,4 +1,5 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +8,8 @@ import '../providers/routes_provider.dart';
 import '../routing/route_warnings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/base_tile_layer.dart';
-import '../widgets/my_routes_section.dart' show departureLabel, severityColor;
+import '../widgets/my_routes_section.dart'
+    show departureLabel, severityColor, severityLabel;
 import 'route_editor_screen.dart';
 
 Future<void> showRouteDetail(BuildContext context, String id) => Navigator.of(
@@ -60,9 +62,15 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
         body: Center(child: Text('Pot ne obstaja.')),
       );
     }
-    final warnings =
-        ref.watch(routeWarningsProvider.select((m) => m[widget.routeId])) ??
-        const <RouteWarning>[];
+    // Compared by content, so a feed refresh with the same warnings does
+    // not rebuild the map.
+    final warnings = ref
+        .watch(
+          routeWarningsProvider.select(
+            (m) => _Warnings(m[widget.routeId] ?? const []),
+          ),
+        )
+        .list;
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final next = route.nextDeparture(DateTime.now());
@@ -245,6 +253,17 @@ class _WarningTile extends StatelessWidget {
           warning.title,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
+        // Severity in words too, not only the tile's colour.
+        isThreeLine: false,
+        titleAlignment: ListTileTitleAlignment.top,
+        trailing: Text(
+          severityLabel(warning.severity),
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         subtitle: warning.detail.isEmpty
             ? null
             : Text(
@@ -274,4 +293,17 @@ class _ClearCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A route's warnings with value equality, for `select`.
+class _Warnings {
+  final List<RouteWarning> list;
+  const _Warnings(this.list);
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Warnings && listEquals(other.list, list);
+
+  @override
+  int get hashCode => Object.hashAll(list);
 }

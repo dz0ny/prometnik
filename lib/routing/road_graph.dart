@@ -136,6 +136,10 @@ class RoadGraph {
   /// expressways fastest, then main (G), regional (R1–R3) roads, and
   /// unnumbered links (ramps, streets) slowest.
   static double speedKmh(String ref) {
+    // "409;410": a section shared by two roads drives like the faster one.
+    if (ref.contains(';')) {
+      return ref.split(';').map(speedKmh).reduce(math.max);
+    }
     final r = ref.trim().toUpperCase();
     if (r.isEmpty) return 35;
     if (r.startsWith('A')) return 120;
@@ -236,6 +240,8 @@ class RoadGraph {
         path.addAll(path.isEmpty ? leg : leg.skip(1));
       }
       final route = _toRoute(path);
+      // Start and end on the same spot: nothing to drive.
+      if (route.edges.isEmpty) return out;
       // Keep only routes that differ enough from the ones found already.
       if (out.every((r) => route.overlap(r) < 0.8)) out.add(route);
       if (out.length > alternatives) break;

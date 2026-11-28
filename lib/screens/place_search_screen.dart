@@ -24,6 +24,8 @@ class PlaceSearchScreen extends StatefulWidget {
   State<PlaceSearchScreen> createState() => _PlaceSearchScreenState();
 }
 
+double _round(double v) => (v * 1000).round() / 1000;
+
 class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
   final _controller = TextEditingController();
   Timer? _debounce;
@@ -35,6 +37,7 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
 
   @override
   void dispose() {
+    widget.service.close();
     _debounce?.cancel();
     _controller.dispose();
     super.dispose();
@@ -103,8 +106,13 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
       });
       return;
     }
-    Navigator.of(context)
-        .pop(RoutePlace('Moja lokacija', LatLng(pos.latitude, pos.longitude)));
+    // ~100 m is enough for routing and keeps the saved home spot vague.
+    Navigator.of(context).pop(
+      RoutePlace(
+        'Moja lokacija',
+        LatLng(_round(pos.latitude), _round(pos.longitude)),
+      ),
+    );
   }
 
   @override
@@ -149,11 +157,14 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
               ),
               if (_loading) const LinearProgressIndicator(minHeight: 2),
               if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(color: cs.onSurfaceVariant),
+                Semantics(
+                  liveRegion: true,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
                   ),
                 ),
               Expanded(

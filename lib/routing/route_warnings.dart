@@ -51,6 +51,18 @@ class RouteWarning {
     required this.along,
     this.opposite = false,
   });
+
+  @override
+  bool operator ==(Object other) =>
+      other is RouteWarning &&
+      other.id == id &&
+      other.severity == severity &&
+      other.title == title &&
+      other.detail == detail &&
+      other.opposite == opposite;
+
+  @override
+  int get hashCode => Object.hash(id, severity, title, detail, opposite);
 }
 
 /// A route polyline indexed for "how far is this point from the route".
@@ -137,15 +149,21 @@ class RouteIndex {
   bool crossesBox(LatLng sw, LatLng ne, {double margin = 100}) {
     final dLat = margin / 111320.0;
     final dLon = margin / (111320.0 * math.cos(sw.latitude * math.pi / 180));
-    for (final p in points) {
-      if (p.latitude >= sw.latitude - dLat &&
-          p.latitude <= ne.latitude + dLat &&
-          p.longitude >= sw.longitude - dLon &&
-          p.longitude <= ne.longitude + dLon) {
-        return true;
-      }
+    final s = sw.latitude - dLat, n = ne.latitude + dLat;
+    final w = sw.longitude - dLon, e = ne.longitude + dLon;
+    bool inside(LatLng p) =>
+        p.latitude >= s &&
+        p.latitude <= n &&
+        p.longitude >= w &&
+        p.longitude <= e;
+    // Segments, not just vertices: motorway lines have few vertices and a
+    // short closure area can sit between two of them.
+    for (var i = 0; i + 1 < points.length; i++) {
+      final a = points[i], b = points[i + 1];
+      if (inside(a) || inside(b)) return true;
+      if (_segmentCrossesBox(a, b, s, w, n, e)) return true;
     }
-    return false;
+    return points.length == 1 && inside(points.first);
   }
 }
 
@@ -184,6 +202,7 @@ List<RouteWarning> routeWarnings(
   required DateTime now,
   String fromName = '',
   String toName = '',
+  Map<Corridor, bool?>? directions,
 }) {
   final out = <RouteWarning>[];
 
@@ -197,9 +216,9 @@ List<RouteWarning> routeWarnings(
         e.hasArea &&
         _onRoads(e.road, roadRefs) &&
         route.crossesBox(e.areaSouthWest!, e.areaNorthEast!)) {
-      hit = e.hasPosition
-          ? route.locate(e.position, 20000)
-          : (distance: 0, along: 0);
+      hit =
+          (e.hasPosition ? route.locate(e.position, 20000) : null) ??
+          (distance: 0.0, along: 0.0);
     }
     if (hit == null) continue;
     final opposite = isOppositeDirection(
@@ -297,7 +316,10 @@ List<RouteWarning> routeWarnings(
 
   final byTitle = {for (final t in travelTimes) t.route.trim(): t};
   for (final c in corridors) {
-    final dir = corridorDirection(route, c);
+    // Geometry only: callers cache it across feed refreshes.
+    final dir = directions != null && directions.containsKey(c)
+        ? directions[c]
+        : corridorDirection(route, c);
     if (dir == null) continue;
     final t = byTitle[dir ? c.forward : c.backward];
     if (t == null || !(t.isClosed || t.hasDelay)) continue;
@@ -323,6 +345,39 @@ List<RouteWarning> routeWarnings(
   return out;
 }
 
+bool _segmentCrossesBox(
+  LatLng a,
+  LatLng b,
+  double s,
+  double w,
+  double n,
+  double e,
+) {
+  // Liang–Barsky clipping in lon/lat (fine at these distances).
+  var t0 = 0.0, t1 = 1.0;
+  final dx = b.longitude - a.longitude, dy = b.latitude - a.latitude;
+  for (final (p, q) in [
+    (-dx, a.longitude - w),
+    (dx, e - a.longitude),
+    (-dy, a.latitude - s),
+    (dy, n - a.latitude),
+  ]) {
+    if (p == 0) {
+      if (q < 0) return false;
+    } else {
+      final r = q / p;
+      if (p < 0) {
+        if (r > t1) return false;
+        if (r > t0) t0 = r;
+      } else {
+        if (r < t0) return false;
+        if (r < t1) t1 = r;
+      }
+    }
+  }
+  return true;
+}
+
 bool _contains(String a, String b) => a.toLowerCase().contains(b.toLowerCase());
 
 /// Whether an event text saying "v smeri X" points back to where the route
@@ -341,8 +396,11 @@ bool isOppositeDirection(
   }
 
   final dir = stem(m.group(1)!);
+  // Only the settlement: "Ljubljanska cesta, Maribor" is in Maribor.
   bool matches(String place) => place
-      .split(RegExp(r'[\s/,-]+'))
+      .split(',')
+      .last
+      .split(RegExp(r'[\s/-]+'))
       .where((w) => w.length >= 3)
       .any((w) => stem(w) == dir);
   return matches(from) && !matches(to);
@@ -360,16 +418,17 @@ bool _onRoads(String eventRoad, Set<String> routeRefs) {
 bool? corridorDirection(RouteIndex route, Corridor c) {
   if (c.points.length < 2) return null;
   final corridor = RouteIndex(c.points);
-  double? firstOnCorridor, lastOnCorridor;
-  var shared = 0.0;
+  var shared = 0.0, progress = 0.0;
+  final half = corridor.length / 2;
   for (var i = 0; i + 1 < route.points.length; i++) {
     final a = corridor.locate(route.points[i], 150);
     final b = corridor.locate(route.points[i + 1], 150);
     if (a == null || b == null) continue;
     shared += route.cumulative[i + 1] - route.cumulative[i];
-    firstOnCorridor ??= a.along;
-    lastOnCorridor = b.along;
+    final d = b.along - a.along;
+    // A closed ring wraps from its end to its start: skip the seam.
+    if (d.abs() < half) progress += d;
   }
   if (shared < corridorMinOverlap) return null;
-  return lastOnCorridor! >= firstOnCorridor!;
+  return progress >= 0;
 }

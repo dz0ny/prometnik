@@ -83,7 +83,11 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
       MaterialPageRoute(builder: (_) => PlaceSearchScreen(title: label)),
     );
     if (place == null || !mounted) return;
-    setState(() => _places[i] = place);
+    setState(() {
+      _places[i] = place;
+      // The old line no longer goes through these places.
+      _routes = const [];
+    });
     await _recompute();
   }
 
@@ -93,7 +97,10 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
   }
 
   void _removeStop(int i) {
-    setState(() => _places.removeAt(i));
+    setState(() {
+      _places.removeAt(i);
+      _routes = const [];
+    });
     unawaited(_recompute());
   }
 
@@ -108,7 +115,9 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
     });
     try {
       final graph = await ref.read(roadGraphProvider.future);
-      final routes = graph.routes([for (final p in stops) p.position]);
+      final routes = await computeRoutes(graph, [
+        for (final p in stops) p.position,
+      ]);
       if (!mounted) return;
       var chosen = 0;
       if (keep != null && routes.isNotEmpty) {
@@ -132,14 +141,15 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
         _routing = false;
         if (routes.isEmpty) {
           _routeError =
-              'Poti ni bilo mogoče najti. Izberite kraj bližje cesti.';
+              'Poti ni bilo mogoče najti. Začetek in cilj sta lahko '
+              'preblizu ali predaleč od ceste.';
         } else if (keep == null || _routes.length <= 1) {
           _routes = routes;
           _chosen = chosen;
         }
       });
       if (routes.isNotEmpty) _fit();
-    } on Exception {
+    } on Object {
       if (!mounted) return;
       setState(() {
         _routing = false;
@@ -179,7 +189,10 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
   }
 
   void _save() {
-    final route = _routes.isEmpty ? null : _routes[_chosen];
+    if (_routing) return;
+    final route = _routes.isEmpty || _routeError != null
+        ? null
+        : _routes[_chosen];
     final places = _places.whereType<RoutePlace>().toList();
     if (route == null || places.length != _places.length) {
       showSheetSnack(context, message: 'Najprej izberite začetek in cilj.');
@@ -286,7 +299,13 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
                     ),
                   ),
                   if (_routeError != null)
-                    Text(_routeError!, style: TextStyle(color: cs.error)),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _routeError!,
+                        style: TextStyle(color: cs.error),
+                      ),
+                    ),
                   if (_routes.length > 1 ||
                       (_routes.isNotEmpty && widget.route == null))
                     ..._alternatives(cs),
@@ -445,6 +464,8 @@ class _AlternativeTile extends StatelessWidget {
       ),
       child: ListTile(
         onTap: onTap,
+        selected: selected,
+        selectedColor: cs.onSurface,
         leading: Icon(Icons.alt_route, color: _altColor(cs, index)),
         title: Text('$km km · $time'),
         subtitle: roads.isEmpty ? null : Text('Ceste: $roads'),

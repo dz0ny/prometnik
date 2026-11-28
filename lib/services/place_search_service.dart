@@ -24,6 +24,8 @@ class PlaceSearchService {
 
   final http.Client _http;
 
+  void close() => _http.close();
+
   /// Slovenia, slightly padded (lon/lat).
   static const _bbox = '13.3,45.4,16.7,46.9';
 

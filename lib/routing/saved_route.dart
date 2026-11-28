@@ -95,7 +95,8 @@ class SavedRoute {
     for (var d = 0; d < 8; d++) {
       final day = DateTime(now.year, now.month, now.day + d);
       if (!days.contains(day.weekday)) continue;
-      final at = day.add(Duration(minutes: m));
+      // Built from fields, not midnight + minutes: DST days are 23/25 h.
+      final at = DateTime(day.year, day.month, day.day, m ~/ 60, m % 60);
       if (!at.isBefore(now)) return at;
     }
     return null;
@@ -160,10 +161,11 @@ String encodePolyline(List<LatLng> points) {
   final out = StringBuffer();
   var pLat = 0, pLon = 0;
   void enc(int v) {
-    var s = v < 0 ? ~(v << 1) : v << 1;
+    // Arithmetic, not bit tricks: on the web ints are JS numbers.
+    var s = v < 0 ? -2 * v - 1 : 2 * v;
     while (s >= 0x20) {
-      out.writeCharCode((0x20 | (s & 0x1f)) + 63);
-      s >>= 5;
+      out.writeCharCode((0x20 | (s % 32)) + 63);
+      s = s ~/ 32;
     }
     out.writeCharCode(s + 63);
   }
@@ -186,11 +188,11 @@ List<LatLng> decodePolyline(String s) {
     while (true) {
       if (i >= s.length) return null;
       final b = s.codeUnitAt(i++) - 63;
-      result |= (b & 0x1f) << shift;
+      result += (b & 0x1f) * (1 << shift);
       shift += 5;
       if (b < 0x20) break;
     }
-    return (result & 1) != 0 ? ~(result >> 1) : result >> 1;
+    return result.isOdd ? -((result + 1) ~/ 2) : result ~/ 2;
   }
 
   while (i < s.length) {

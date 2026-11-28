@@ -1,5 +1,8 @@
+import 'dart:isolate';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../routing/corridors.dart';
 import '../routing/road_graph.dart';
@@ -17,11 +20,16 @@ final roadGraphProvider = FutureProvider<RoadGraph>(
   (ref) => RoadsService.instance.graph(),
 );
 
-/// The DARS travel-time corridors routed on the graph.
+/// The DARS travel-time corridors routed on the graph (off the main
+/// isolate: nine A* searches over the whole country).
 final corridorsProvider = FutureProvider<List<Corridor>>((ref) async {
   final graph = await ref.watch(roadGraphProvider.future);
-  return buildCorridors(graph);
+  return Isolate.run(() => buildCorridors(graph));
 });
+
+/// Routes through [stops] on the graph, computed off the main isolate.
+Future<List<RoadRoute>> computeRoutes(RoadGraph graph, List<LatLng> stops) =>
+    Isolate.run(() => graph.routes(stops));
 
 /// Prefs key of the saved routes (also read by the background check).
 const savedRoutesKey = 'routes.saved';
@@ -71,7 +79,7 @@ final routeWarningsProvider = Provider<Map<String, List<RouteWarning>>>((ref) {
   return {
     for (final r in routes)
       r.id: routeWarnings(
-        _index(r),
+        _geometry(r).index,
         events: events,
         roadStations: stations,
         wind: wind,
@@ -81,21 +89,34 @@ final routeWarningsProvider = Provider<Map<String, List<RouteWarning>>>((ref) {
         now: now,
         fromName: r.places.first.name,
         toName: r.places.last.name,
+        directions: _geometry(r).directions(corridors),
       ),
   };
 });
 
-// Indexing is cheap but feeds refresh often: keep one index per geometry.
-final Map<String, (String, RouteIndex)> _indexes = {};
+/// What depends only on a route's geometry, kept while its points live:
+/// the spatial index and the corridor directions (the feeds refresh often).
+class _RouteGeometry {
+  final RouteIndex index;
+  List<Corridor>? _for;
+  Map<Corridor, bool?> _dirs = const {};
+  _RouteGeometry(List<LatLng> points) : index = RouteIndex(points);
 
-RouteIndex _index(SavedRoute r) {
-  final key = encodePolyline(r.points);
-  final hit = _indexes[r.id];
-  if (hit != null && hit.$1 == key) return hit.$2;
-  final idx = RouteIndex(r.points);
-  _indexes[r.id] = (key, idx);
-  return idx;
+  Map<Corridor, bool?> directions(List<Corridor> corridors) {
+    if (!identical(_for, corridors)) {
+      _for = corridors;
+      _dirs = {for (final c in corridors) c: corridorDirection(index, c)};
+    }
+    return _dirs;
+  }
 }
+
+// Keyed by the points list itself: a SavedRoute is immutable, so a changed
+// route has a new list and the old entry is collected with it.
+final Expando<_RouteGeometry> _geometries = Expando('routeGeometry');
+
+_RouteGeometry _geometry(SavedRoute r) =>
+    _geometries[r.points] ??= _RouteGeometry(r.points);
 
 /// A new route id.
 String newRouteId() =>
