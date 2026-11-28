@@ -19,6 +19,9 @@ class Prefs {
   static int getInt(String key, int def) => _p.getInt(key) ?? def;
   static void setInt(String key, int v) => _p.setInt(key, v);
 
+  static String? getString(String key) => _p.getString(key);
+  static void setString(String key, String v) => _p.setString(key, v);
+
   static List<String> getStringList(String key, List<String> def) =>
       _p.getStringList(key) ?? def;
   static void setStringList(String key, List<String> v) =>

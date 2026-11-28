@@ -13,6 +13,7 @@ import '../widgets/event_sheet.dart';
 import '../widgets/event_visuals.dart';
 import '../widgets/filter_sheet.dart';
 import 'watched_roads_picker_screen.dart';
+import '../widgets/my_routes_section.dart';
 
 /// "V bližini": events on watched roads + events near the user's location, with
 /// foreground notifications handled by [AlertsNotifier]. Supports the same
@@ -338,6 +339,8 @@ class _NearbyTabState extends ConsumerState<NearbyTab> {
                         bottom: 16 + AppTheme.bottomBarContentInset(context),
                       ),
                       children: [
+                        const MyRoutesSection(),
+                        const SizedBox(height: 8),
                         // Watched roads.
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 4, 12, 4),

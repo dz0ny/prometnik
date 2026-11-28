@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:latlong2/latlong.dart';
 
+import '../routing/road_graph.dart';
+
 /// A road polyline with its OSM `ref` (road number, e.g. "A1", "651") and name.
 class RoadLine {
   final String ref;
@@ -86,6 +88,15 @@ class RoadsService {
     }
     return (refs, names, coords);
   }
+
+  /// A routable graph of all bundled roads, built off the main thread.
+  Future<RoadGraph> graph() async {
+    await _ensureLoaded();
+    return compute(_buildGraph, (_refs!, _coords!));
+  }
+
+  static RoadGraph _buildGraph((List<String>, List<Float64List>) data) =>
+      RoadGraph.build(data.$1, data.$2);
 
   /// Roads whose bounding box intersects [w,s,e,n] (lon/lat degrees).
   Future<List<RoadLine>> roadsIn(double w, double s, double e, double n) async {
