@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Medium (4x2): name and temperature left, up to four readings right. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:clipToOutline="true">
+
+    <ImageView android:id="@+id/bg_image" android:layout_width="match_parent"
+        android:layout_height="match_parent" android:scaleType="centerCrop"
+        android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/scrim" android:layout_width="match_parent"
+        android:layout_height="match_parent" android:scaleType="fitXY"
+        android:src="@drawable/widget_scrim" android:importantForAccessibility="no" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="horizontal" android:padding="16dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <TextView android:id="@+id/dot" style="@style/WidgetDot" />
+                <TextView android:id="@+id/name" style="@style/WidgetName" android:textSize="17sp"
+                    android:maxLines="2" />
+            </LinearLayout>
+            <FrameLayout android:layout_width="match_parent" android:layout_height="0dp"
+                android:layout_weight="1" />
+            <TextView android:id="@+id/temp" style="@style/WidgetTemp" android:textSize="48sp" />
+            <TextView android:id="@+id/updated" style="@style/WidgetUpdated" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/metrics" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:layout_gravity="bottom"
+            android:background="@drawable/widget_chip" android:orientation="vertical"
+            android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+            <TextView android:id="@+id/m1" style="@style/WidgetMetric" />
+            <TextView android:id="@+id/m2" style="@style/WidgetMetric" />
+            <TextView android:id="@+id/m3" style="@style/WidgetMetric" />
+            <TextView android:id="@+id/m4" style="@style/WidgetMetric" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

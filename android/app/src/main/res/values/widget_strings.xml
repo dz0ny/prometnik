@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="station_widget_label">Vremenska postaja</string>
+    <string name="station_widget_description">Temperatura, veter, padavine in slika kamere s postaje, ki jo izberete.</string>
+</resources>

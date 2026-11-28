@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="WidgetText">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#FFFFFFFF</item>
+        <item name="android:shadowColor">#73000000</item>
+        <item name="android:shadowDy">1</item>
+        <item name="android:shadowRadius">4</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <style name="WidgetDot" parent="WidgetText">
+        <item name="android:text">●</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:layout_marginEnd">5dp</item>
+        <item name="android:layout_marginTop">2dp</item>
+    </style>
+    <style name="WidgetName" parent="WidgetText">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+    <style name="WidgetTemp" parent="WidgetText">
+        <item name="android:fontFamily">sans-serif-black</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+    <style name="WidgetMetric" parent="WidgetText">
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:layout_marginTop">2dp</item>
+    </style>
+    <style name="WidgetUpdated" parent="WidgetText">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">#D9FFFFFF</item>
+        <item name="android:layout_marginTop">3dp</item>
+    </style>
+    <style name="WidgetCell">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:background">@drawable/widget_cell</item>
+    </style>
+    <style name="WidgetCellLabel" parent="WidgetText">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">#A6FFFFFF</item>
+        <item name="android:shadowRadius">0</item>
+    </style>
+    <style name="WidgetCellValue" parent="WidgetText">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:shadowRadius">0</item>
+    </style>
+</resources>

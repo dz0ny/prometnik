@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Small (2x2): name, big temperature, two readings, time. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:clipToOutline="true">
+
+    <ImageView android:id="@+id/bg_image" android:layout_width="match_parent"
+        android:layout_height="match_parent" android:scaleType="centerCrop"
+        android:importantForAccessibility="no" />
+    <ImageView android:id="@+id/scrim" android:layout_width="match_parent"
+        android:layout_height="match_parent" android:scaleType="fitXY"
+        android:src="@drawable/widget_scrim" android:importantForAccessibility="no" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="vertical" android:padding="14dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView android:id="@+id/dot" style="@style/WidgetDot" />
+            <TextView android:id="@+id/name" style="@style/WidgetName" android:maxLines="2"
+                android:text="Iga vas" />
+        </LinearLayout>
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1" />
+        <TextView android:id="@+id/temp" style="@style/WidgetTemp" android:textSize="40sp"
+            android:text="1,1°" />
+        <TextView android:id="@+id/m1" style="@style/WidgetMetric" android:text="Veter 9 km/h VSV" />
+        <TextView android:id="@+id/m2" style="@style/WidgetMetric" android:text="Padavine 0,0 mm" />
+        <TextView android:id="@+id/updated" style="@style/WidgetUpdated" android:text="ob 08:35" />
+    </LinearLayout>
+</FrameLayout>
