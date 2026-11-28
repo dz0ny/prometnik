@@ -35,6 +35,11 @@ const STALE_SECONDS = 86400; // any frame from the last day beats a slow camera
 const ORIGIN_TIMEOUT_MS = 8000;
 // A stale copy older than this loses to a newer hourly snapshot in R2.
 const STALE_PREFER_SNAPSHOT_MS = 10 * 60 * 1000;
+// A stale copy older than this is not served straight away: the camera gets
+// a short chance first. Otherwise the first request after a quiet night
+// shows a frame from hours ago as if it were live.
+const STALE_TRY_CAMERA_MS = 5 * 60 * 1000;
+const STALE_CAMERA_TIMEOUT_MS = 4000;
 
 /** Validates the `u` parameter; returns the camera URL or null. */
 export function cameraUrl(raw) {
@@ -194,6 +199,19 @@ async function serveCamera(cam, env, ctx) {
     );
   }
   await snap?.body?.cancel();
+  if (stale && !(Date.now() - staleAt < STALE_TRY_CAMERA_MS)) {
+    try {
+      const { body, type, at } = await refreshFrame(cam, env, keys, STALE_CAMERA_TIMEOUT_MS, 1);
+      await stale.body?.cancel();
+      return withHeaders(
+        new Response(body, { headers: { 'Content-Type': type, 'X-Cam-At': at } }),
+        FRESH_SECONDS,
+        'MISS',
+      );
+    } catch {
+      // Camera slow or down: the old frame (its X-Cam-At tells its age).
+    }
+  }
   if (stale) {
     ctx.waitUntil(refresh().catch(() => {}));
     return withHeaders(stale, 15, 'STALE');
@@ -215,8 +233,8 @@ async function serveCamera(cam, env, ctx) {
 }
 
 /** Fetch the camera, update both edge copies and this hour's R2 snapshot. */
-async function refreshFrame(cam, env, keys) {
-  const { body, type } = await fetchFrame(cam);
+async function refreshFrame(cam, env, keys, timeoutMs = ORIGIN_TIMEOUT_MS, tries = 3) {
+  const { body, type } = await fetchFrame(cam, timeoutMs, tries);
   // When the frame was fetched, so clients can tell a stale copy's real age.
   const at = new Date().toISOString();
   const store = (maxAge) =>

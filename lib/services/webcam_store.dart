@@ -126,6 +126,14 @@ class WebcamStore {
     if (image == null && direct != null) {
       debugPrint('WebcamStore: proxy failed for $key, trying the camera');
       image = await _getImage(direct, key);
+    } else if (image != null &&
+        direct != null &&
+        isOldProxyFrame(image.at, DateTime.now())) {
+      // The edge could not reach the camera and sent its last good copy;
+      // the phone may reach it directly. Keep whichever frame is newer.
+      debugPrint('WebcamStore: proxy copy of $key is old, trying the camera');
+      final own = await _getImage(direct, key);
+      if (own != null) image = (bytes: own.bytes, at: own.at ?? DateTime.now());
     }
     if (image == null) return null;
     final now = DateTime.now();
@@ -426,6 +434,12 @@ DateTime? frameTakenAt(Map<String, String> headers) {
   if (at == null || at.isAfter(DateTime.now())) return null;
   return at;
 }
+
+/// Whether a frame the proxy dated [at] is too old to show as live, so the
+/// camera itself is worth asking (cameras update about once a minute).
+@visibleForTesting
+bool isOldProxyFrame(DateTime? at, DateTime now) =>
+    at != null && now.difference(at) > const Duration(minutes: 10);
 
 @visibleForTesting
 String latestKey(String cameraKey) => 'latest|$cameraKey';

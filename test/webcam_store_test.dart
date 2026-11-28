@@ -52,4 +52,17 @@ void main() {
       isNull,
     );
   });
+
+  test('isOldProxyFrame: only a dated frame older than 10 minutes', () {
+    final now = DateTime(2026, 11, 28, 9);
+    expect(isOldProxyFrame(null, now), isFalse);
+    expect(
+      isOldProxyFrame(now.subtract(const Duration(minutes: 9)), now),
+      isFalse,
+    );
+    expect(
+      isOldProxyFrame(now.subtract(const Duration(hours: 8)), now),
+      isTrue,
+    );
+  });
 }
