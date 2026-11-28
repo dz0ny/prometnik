@@ -160,7 +160,10 @@ class WebcamStore {
         debugPrint('WebcamStore: $key answered ${res.statusCode} $type');
         return null;
       }
-      return (bytes: res.bodyBytes, at: frameTakenAt(res.headers));
+      return (
+        bytes: repairJpeg(res.bodyBytes, type),
+        at: frameTakenAt(res.headers),
+      );
     } on Exception catch (e) {
       debugPrint('WebcamStore.fetch($key): $e');
       return null;
@@ -433,6 +436,28 @@ DateTime? frameTakenAt(Map<String, String> headers) {
   // Ignore clocks running ahead of ours.
   if (at == null || at.isAfter(DateTime.now())) return null;
   return at;
+}
+
+/// [bytes] made decodable when a JPEG stops early (no end-of-image marker),
+/// as some cameras serve for hours: the marker is appended and the image
+/// shows what arrived, the missing bottom grey. A fresh frame with a grey
+/// strip beats an old whole one. Anything else is returned unchanged.
+@visibleForTesting
+Uint8List repairJpeg(Uint8List bytes, String contentType) {
+  if (!contentType.contains('jpeg') && !contentType.contains('jpg')) {
+    return bytes;
+  }
+  if (bytes.length < 1024 || bytes[0] != 0xFF || bytes[1] != 0xD8) {
+    return bytes;
+  }
+  // The end marker may be followed by a little padding.
+  for (var i = bytes.length - 2; i >= bytes.length - 64; i--) {
+    if (bytes[i] == 0xFF && bytes[i + 1] == 0xD9) return bytes;
+  }
+  return Uint8List(bytes.length + 2)
+    ..setAll(0, bytes)
+    ..[bytes.length] = 0xFF
+    ..[bytes.length + 1] = 0xD9;
 }
 
 /// Whether a frame the proxy dated [at] is too old to show as live, so the

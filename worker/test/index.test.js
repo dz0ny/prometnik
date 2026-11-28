@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraUrl, cacheKeys } from '../src/index.js';
+import { cameraUrl, cacheKeys, isCompleteImage, repairJpeg } from '../src/index.js';
 
 test('accepts known camera hosts and drops the app cache-buster', () => {
   const u = cameraUrl('https://kamere.dars.si/kamere/x/Cam_0001.jpg?t=123');
@@ -117,4 +117,18 @@ test('isCompleteImage rejects half-written JPEGs', async () => {
   assert.equal(isCompleteImage(padded, 'image/jpeg'), true);
   assert.equal(isCompleteImage(cut, 'image/jpeg'), false);
   assert.equal(isCompleteImage(cut, 'image/png'), true);
+});
+
+test('repairJpeg appends the end marker to a cut-off JPEG only', () => {
+  const cut = new Uint8Array(2048);
+  cut[0] = 0xff;
+  cut[1] = 0xd8;
+  const fixed = new Uint8Array(repairJpeg(cut.buffer, 'image/jpeg'));
+  assert.equal(fixed.length, 2050);
+  assert.ok(isCompleteImage(fixed.buffer, 'image/jpeg'));
+  // Already whole, not a JPEG, or too small to be a frame: unchanged.
+  const whole = new Uint8Array([...cut.slice(0, 1024), 0xff, 0xd9]);
+  assert.equal(repairJpeg(whole.buffer, 'image/jpeg').byteLength, whole.length);
+  assert.equal(repairJpeg(cut.buffer, 'image/png').byteLength, 2048);
+  assert.equal(repairJpeg(new Uint8Array([0xff, 0xd8, 0]).buffer, 'image/jpeg').byteLength, 3);
 });

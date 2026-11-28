@@ -101,8 +101,26 @@ export function isCompleteImage(buf, type) {
 }
 
 /**
+ * [buf] made decodable when a JPEG stops early (no end-of-image marker):
+ * the marker is appended and decoders show what arrived, the missing bottom
+ * grey. Some cameras serve only cut-off frames for hours; a fresh frame with
+ * a grey strip beats an old whole one. Anything else is returned as is.
+ */
+export function repairJpeg(buf, type) {
+  const b = new Uint8Array(buf);
+  if (!/jpe?g/i.test(type) || b.length < 1024 || b[0] !== 0xff || b[1] !== 0xd8) return buf;
+  if (isCompleteImage(buf, type)) return buf;
+  const out = new Uint8Array(b.length + 2);
+  out.set(b);
+  out[b.length] = 0xff;
+  out[b.length + 1] = 0xd9;
+  return out.buffer;
+}
+
+/**
  * Fetches one whole frame of [cam]: { body, type }. A half-written frame is
- * fetched again (up to [tries] times) after a short pause.
+ * fetched again (up to [tries] times) after a short pause; if the camera
+ * keeps sending cut-off frames, the last one is repaired (see repairJpeg).
  */
 export async function fetchFrame(cam, timeoutMs = ORIGIN_TIMEOUT_MS, tries = 3) {
   for (let attempt = 1; ; attempt++) {
@@ -116,7 +134,11 @@ export async function fetchFrame(cam, timeoutMs = ORIGIN_TIMEOUT_MS, tries = 3) 
     }
     const body = await res.arrayBuffer();
     if (isCompleteImage(body, type)) return { body, type };
-    if (attempt >= tries) throw new Error('camera sent an incomplete image');
+    if (attempt >= tries) {
+      const fixed = repairJpeg(body, type);
+      if (isCompleteImage(fixed, type)) return { body: fixed, type };
+      throw new Error('camera sent an incomplete image');
+    }
     await new Promise((r) => setTimeout(r, 700));
   }
 }
@@ -201,7 +223,7 @@ async function serveCamera(cam, env, ctx) {
   await snap?.body?.cancel();
   if (stale && !(Date.now() - staleAt < STALE_TRY_CAMERA_MS)) {
     try {
-      const { body, type, at } = await refreshFrame(cam, env, keys, STALE_CAMERA_TIMEOUT_MS, 1);
+      const { body, type, at } = await refreshFrame(cam, env, keys, STALE_CAMERA_TIMEOUT_MS, 2);
       await stale.body?.cancel();
       return withHeaders(
         new Response(body, { headers: { 'Content-Type': type, 'X-Cam-At': at } }),

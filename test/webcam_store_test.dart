@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:promet/services/webcam_proxy.dart';
 import 'package:promet/services/webcam_store.dart';
@@ -64,5 +66,16 @@ void main() {
       isOldProxyFrame(now.subtract(const Duration(hours: 8)), now),
       isTrue,
     );
+  });
+
+  test('repairJpeg appends the end marker to a cut-off JPEG only', () {
+    final cut = Uint8List(2048)
+      ..[0] = 0xFF
+      ..[1] = 0xD8;
+    final fixed = repairJpeg(cut, 'image/jpeg');
+    expect(fixed.length, 2050);
+    expect(fixed.sublist(2048), [0xFF, 0xD9]);
+    expect(repairJpeg(fixed, 'image/jpeg'), same(fixed));
+    expect(repairJpeg(cut, 'image/png'), same(cut));
   });
 }
