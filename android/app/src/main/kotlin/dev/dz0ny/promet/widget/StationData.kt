@@ -76,7 +76,7 @@ data class StationReading(
                 id = j.optInt("stationId"),
                 name = j.optString("name").trim().ifEmpty { "Postaja" },
                 // Some stations list several cameras joined with ';': the first.
-                cameraLink = j.optString("cameraLink").split(';').map { it.trim() }.firstOrNull { it.isNotEmpty } ?: "",
+                cameraLink = j.optString("cameraLink").split(';').map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "",
                 timestamp = ts,
                 temp = d("outdoorTemperatureC"),
                 minTemp = d("minOutdoorTemperatureC"),
