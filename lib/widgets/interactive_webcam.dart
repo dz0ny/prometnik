@@ -3,10 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../models/weather_station.dart';
 import '../theme/app_theme.dart';
 import 'weather_details.dart' show WeatherFormat;
-import 'webcam_image.dart';
 import 'sheet_snack.dart';
 import 'live_webcam_image.dart';
 import 'shimmer_box.dart';
@@ -66,7 +64,15 @@ class _OverlayIconButton extends StatelessWidget {
 /// badge) are drawn over a bottom gradient scrim, making the frame a hero
 /// image. Until the first frame arrives a shimmer skeleton is shown.
 class InteractiveWebcam extends StatefulWidget {
-  final WeatherStation station;
+  /// Camera name, used for the fullscreen viewer's title.
+  final String title;
+
+  /// The proxied, cache-busted frame URL for a buster; null = no camera.
+  final String Function(int buster)? urlFor;
+
+  /// Called with the time of each live frame shown (e.g. a header's
+  /// "Slika ob" line).
+  final ValueChanged<DateTime>? onLiveFrame;
   final double aspectRatio;
   final double borderRadius;
   final Duration? autoRefresh;
@@ -88,7 +94,9 @@ class InteractiveWebcam extends StatefulWidget {
 
   const InteractiveWebcam({
     super.key,
-    required this.station,
+    required this.title,
+    required this.urlFor,
+    this.onLiveFrame,
     this.aspectRatio = 16 / 9,
     this.borderRadius = 20,
     this.autoRefresh,
@@ -118,7 +126,7 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
     super.initState();
     final interval = widget.autoRefresh;
     // No point refreshing a station that has no camera.
-    if (interval != null && widget.station.cameraLink.isNotEmpty) {
+    if (interval != null && widget.urlFor != null) {
       _timer = Timer.periodic(interval, (_) {
         if (mounted) {
           setState(() => _key = DateTime.now().millisecondsSinceEpoch);
@@ -146,14 +154,16 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
   void _openFullscreen() {
     showWebcamViewer(
       context,
-      title: widget.station.name,
-      urlFor: widget.station.cameraUrlWithBuster,
+      title: widget.title,
+      urlFor: widget.urlFor!,
       initialKey: _key,
       initialSnapshot: _snapshot,
+      showHistory: widget.showHistory,
     );
   }
 
   void _onFrame(WebcamFrame f) {
+    widget.onLiveFrame?.call(f.at);
     if (_liveAt != f.at && mounted) {
       // Defer: onFrame can fire during the child's build.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -165,14 +175,15 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
   @override
   Widget build(BuildContext context) {
     final image = _buildImage(context);
-    if (!widget.showHistory || widget.station.cameraLink.isEmpty) return image;
+    final urlFor = widget.urlFor;
+    if (!widget.showHistory || urlFor == null) return image;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         image,
         WebcamHistoryStrip(
-          url: widget.station.cameraUrlWithBuster(_key),
+          url: urlFor(_key),
           selected: _snapshot,
           refreshToken: _liveAt,
           onSelect: (f) {
@@ -186,7 +197,8 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
 
   Widget _buildImage(BuildContext context) {
     final hasOverlay = widget.overlayName != null;
-    final hasCamera = widget.station.cameraLink.isNotEmpty;
+    final urlFor = widget.urlFor;
+    final hasCamera = urlFor != null;
     return GestureDetector(
       onTap: hasCamera ? _openFullscreen : null,
       onLongPress: hasCamera ? _refresh : null,
@@ -201,7 +213,7 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                 color: Colors.black,
                 child: hasCamera
                     ? LiveWebcamImage(
-                        url: widget.station.cameraUrlWithBuster(_key),
+                        url: urlFor(_key),
                         fit: widget.fit,
                         width: double.infinity,
                         snapshot: _snapshot,
@@ -209,11 +221,13 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
                         placeholder: (_) => const ShimmerBox(),
                         errorWidget: (_) => const _ImageUnavailable(),
                       )
-                    // No camera: WebcamImage's "Ni kamere" placeholder.
-                    : WebcamImage(
-                        station: widget.station,
-                        refreshKey: _key,
-                        fit: BoxFit.contain,
+                    : const Center(
+                        child: Icon(
+                          Icons.videocam_off,
+                          color: Colors.white38,
+                          size: 32,
+                          semanticLabel: 'Ni kamere',
+                        ),
                       ),
               ),
               if (_snapshot != null)

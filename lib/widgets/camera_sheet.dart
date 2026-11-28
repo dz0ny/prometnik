@@ -8,9 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/traffic_camera.dart';
 import 'sheet_snack.dart';
 import 'app_sheet.dart';
-import 'live_webcam_image.dart';
-import 'webcam_viewer.dart';
-import '../services/webcam_store.dart';
+import 'interactive_webcam.dart';
+import 'weather_details.dart' show WeatherFormat;
 
 /// Present a DARS camera in a modal bottom sheet (live image, auto-refresh,
 /// tap for fullscreen). Shared by the map markers.
@@ -27,39 +26,19 @@ class CameraSheet extends StatefulWidget {
   State<CameraSheet> createState() => _CameraSheetState();
 }
 
+/// The same layout as the station sheet: the live frame as a full-width hero
+/// with the name over it and refresh / fullscreen buttons, the frame time in
+/// the slim header, then where the camera is and what it looks at.
 class _CameraSheetState extends State<CameraSheet> {
-  int _key = DateTime.now().millisecondsSinceEpoch;
-  Timer? _timer;
+  /// When the frame on screen was taken (from the edge proxy).
+  DateTime? _frameAt;
 
-  /// Selected history snapshot (null = live) and the latest live frame time.
-  WebcamFrame? _snapshot;
-  DateTime? _liveAt;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (mounted) {
-        setState(() => _key = DateTime.now().millisecondsSinceEpoch);
-      }
+  void _onLiveFrame(DateTime at) {
+    if (at == _frameAt) return;
+    // May arrive while the image builds.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && at != _frameAt) setState(() => _frameAt = at);
     });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _openFullscreen() {
-    showWebcamViewer(
-      context,
-      title: widget.camera.title.isEmpty ? 'Kamera' : widget.camera.title,
-      urlFor: widget.camera.imageUrlWithBuster,
-      initialKey: _key,
-      initialSnapshot: _snapshot,
-      showHistory: false,
-    );
   }
 
   Future<void> _openBrowser() async {
@@ -71,102 +50,118 @@ class _CameraSheetState extends State<CameraSheet> {
     } on PlatformException {
       opened = false;
     }
-    if (!opened) {
-      if (mounted) {
-        showSheetSnack(
-          context,
-          message: 'Povezave ni mogoče odpreti',
-          error: true,
-        );
-      }
+    if (!opened && mounted) {
+      showSheetSnack(
+        context,
+        message: 'Povezave ni mogoče odpreti',
+        error: true,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final cam = widget.camera;
+    final name = cam.title.isEmpty ? 'Kamera' : cam.title;
+    final at = _frameAt;
 
     return AppSheet(
-      title: cam.title.isEmpty ? 'Kamera' : cam.title,
-      titleMaxLines: 2,
-      subtitle: cam.region.isEmpty ? null : cam.region,
-      leading: Icon(Icons.videocam, color: cs.primary),
+      // The hero carries the name; the header keeps the frame time.
+      subtitle: at == null ? null : 'Slika ob ${WeatherFormat.timestamp(at)}',
       children: [
-        Semantics(
-          button: true,
-          label: 'Celozaslonski prikaz',
-          child: GestureDetector(
-            onTap: _openFullscreen,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ColoredBox(
-                  color: Colors.black,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      LiveWebcamImage(
-                        url: cam.imageUrlWithBuster(_key),
-                        fit: BoxFit.contain,
-                        snapshot: _snapshot,
-                        onFrame: (f) {
-                          if (_liveAt != f.at) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted) setState(() => _liveAt = f.at);
-                            });
-                          }
-                        },
-                        placeholder: (_) => const Center(
-                          child: SizedBox(
-                            width: 26,
-                            height: 26,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                        errorWidget: (_) => const Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white54,
-                          size: 48,
-                        ),
-                      ),
-                      if (_snapshot != null)
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: WebcamSnapshotBadge(frame: _snapshot!),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+        InteractiveWebcam(
+          title: name,
+          urlFor: cam.imageUrlWithBuster,
+          onLiveFrame: _onLiveFrame,
+          autoRefresh: const Duration(seconds: 60),
+          fit: BoxFit.cover,
+          borderRadius: 24,
+          overlayName: name,
         ),
-        // No 24-hour history here: only weather-station cameras are
-        // captured hourly.
-        if (cam.description.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Text(
-            cam.description,
-            style: TextStyle(color: cs.onSurfaceVariant, height: 1.35),
-          ),
-        ],
+        const SizedBox(height: 12),
+        _CameraInfoCard(camera: cam),
         const SizedBox(height: 16),
         AdaptiveButton.child(
-          onPressed: _openBrowser,
+          onPressed: () => unawaited(_openBrowser()),
           style: AdaptiveButtonStyle.tinted,
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.open_in_new, size: 18),
               SizedBox(width: 8),
-              Text('Odpri v brskalniku'),
+              Text('Odpri sliko v brskalniku'),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Where the camera is: road and view direction, region and source.
+class _CameraInfoCard extends StatelessWidget {
+  final TrafficCamera camera;
+  const _CameraInfoCard({required this.camera});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (camera.description.isNotEmpty)
+            _InfoRow(icon: Icons.route, text: camera.description, strong: true),
+          if (camera.region.isNotEmpty)
+            _InfoRow(icon: Icons.place_outlined, text: camera.region),
+          const _InfoRow(
+            icon: Icons.videocam_outlined,
+            text: 'Kamera DARS · slika se osveži vsako minuto',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final bool strong;
+  const _InfoRow({required this.icon, required this.text, this.strong = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: strong ? cs.primary : cs.onSurfaceVariant,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: strong ? cs.onSurface : cs.onSurfaceVariant,
+                fontSize: strong ? 15 : 13.5,
+                fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

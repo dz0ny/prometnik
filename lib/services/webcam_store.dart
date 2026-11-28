@@ -315,6 +315,18 @@ class WebcamStore {
     while (_latest.length > _memLimit) {
       _latest.remove(_latest.keys.first);
     }
+    _updates.add((key: key, frame: frame));
+  }
+
+  // Every new latest frame, so all views of a camera (list thumbnail, map
+  // pin, sheet, fullscreen) show the same picture whichever one fetched it.
+  final StreamController<({String key, WebcamFrame frame})> _updates =
+      StreamController.broadcast(sync: false);
+
+  /// New latest frames of the camera behind [url].
+  Stream<WebcamFrame> updates(String url) {
+    final key = cameraKey(url);
+    return _updates.stream.where((u) => u.key == key).map((u) => u.frame);
   }
 }
 

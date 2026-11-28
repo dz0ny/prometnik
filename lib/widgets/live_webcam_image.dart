@@ -57,26 +57,76 @@ class _LiveWebcamImageState extends State<LiveWebcamImage> {
   /// Skip re-downloading a camera another widget fetched this recently.
   static const Duration _freshFor = Duration(seconds: 30);
 
+  /// A frame on screen older than this is fetched again (checked every
+  /// [_staleCheck]); a camera that stays stale is retried at most every
+  /// [_staleRetry].
+  static const Duration staleAfter = Duration(minutes: 15);
+  static const Duration _staleCheck = Duration(minutes: 1);
+  static const Duration _staleRetry = Duration(minutes: 2);
+
   final WebcamStore _store = WebcamStore.instance;
   WebcamFrame? _frame;
   bool _failed = false;
+  StreamSubscription<WebcamFrame>? _sub;
+  Timer? _staleTimer;
 
   @override
   void initState() {
     super.initState();
     _frame = _store.latestSync(widget.url);
+    _listen();
+    if (_frame != null) {
+      // Report the frame already known too (after this build).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final f = _frame;
+        if (mounted && f != null) widget.onFrame?.call(f);
+      });
+    }
     if (_frame == null) unawaited(_loadStored());
     _refresh();
+    // Mounted = in view (lazy lists, visible map pins): keep it current.
+    _staleTimer = Timer.periodic(_staleCheck, (_) => _refreshIfStale());
+  }
+
+  void _refreshIfStale() {
+    if (!mounted || widget.url.isEmpty) return;
+    final f = _frame;
+    final stale = f == null || DateTime.now().difference(f.at) > staleAfter;
+    if (!stale || _store.isFresh(widget.url, _staleRetry)) return;
+    _fetch();
   }
 
   @override
   void didUpdateWidget(LiveWebcamImage old) {
     super.didUpdateWidget(old);
     if (old.url != widget.url) {
+      if (cameraKey(old.url) != cameraKey(widget.url)) _listen();
       final known = _store.latestSync(widget.url);
       if (known != null && !identical(known, _frame)) _show(known);
       _refresh();
     }
+  }
+
+  @override
+  void dispose() {
+    _staleTimer?.cancel();
+    unawaited(_sub?.cancel());
+    super.dispose();
+  }
+
+  /// Follow the store, so a frame fetched by any other view of this camera
+  /// shows here too: one source for every image of a camera.
+  void _listen() {
+    unawaited(_sub?.cancel());
+    _sub = _store.updates(widget.url).listen((f) {
+      final cur = _frame;
+      if (!mounted || identical(f, cur)) return;
+      if (cur != null && f.at.isBefore(cur.at)) return;
+      setState(() {
+        _show(f);
+        _failed = false;
+      });
+    });
   }
 
   Future<void> _loadStored() async {
@@ -89,7 +139,15 @@ class _LiveWebcamImageState extends State<LiveWebcamImage> {
 
   void _refresh() {
     if (widget.url.isEmpty) return;
-    if (_frame != null && _store.isFresh(widget.url, _freshFor)) return;
+    final f = _frame;
+    final stale = f == null || DateTime.now().difference(f.at) > staleAfter;
+    // Skip a camera another view just fetched, unless its frame is old.
+    if (!stale && _store.isFresh(widget.url, _freshFor)) return;
+    if (stale && _store.isFresh(widget.url, _staleRetry) && f != null) return;
+    _fetch();
+  }
+
+  void _fetch() {
     final url = widget.url;
     unawaited(
       _store.fetch(url).then((fresh) {

@@ -188,7 +188,8 @@ class _StationSheetState extends ConsumerState<StationSheet> {
       children: [
         if (hasCamera) ...[
           InteractiveWebcam(
-            station: station,
+            title: name,
+            urlFor: station.cameraUrlWithBuster,
             autoRefresh: const Duration(seconds: 60),
             // The worker keeps 24-hour history for weather-station cameras.
             showHistory: !roadOnly,
