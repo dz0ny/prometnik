@@ -6,6 +6,10 @@ import { LATEST_APK_URL, RELEASES_URL } from "@/lib/site";
 // shows "Kmalu" and links nowhere.
 const PLAY_URL: string | null = null;
 const APP_STORE_URL: string | null = null;
+
+// Closed test on Google Play (same links as lib/config/testing.dart).
+const TESTERS_GROUP_URL = "https://groups.google.com/g/prometnik-testers";
+const PLAY_OPT_IN_URL = "https://play.google.com/apps/testing/dev.dz0ny.promet";
 ---
 
 <section id="prenos" class="py-section scroll-mt-16" aria-labelledby="prenos-naslov">
@@ -15,7 +19,7 @@ const APP_STORE_URL: string | null = null;
         Namestite Prometnik.
       </h2>
       <p class="text-lg text-muted-foreground lg:col-span-5">
-        Za Android je na voljo kot datoteka APK. Google Play in App Store prideta kmalu.
+        Za Android je na voljo kot datoteka APK ali v Googlu Play kot zaprti preizkus. App Store pride kmalu.
       </p>
     </div>
 
@@ -49,7 +53,31 @@ const APP_STORE_URL: string | null = null;
         {PLAY_URL ? (
           <a href={PLAY_URL} class="mt-2 inline-block text-primary underline underline-offset-4">Odpri v trgovini</a>
         ) : (
-          <p class="mt-2 text-[0.97rem] text-muted-foreground"><span class="mr-2 inline-block rounded-full bg-muted px-2.5 py-0.5 text-sm font-bold text-foreground">Kmalu</span>Posodobitve prek trgovine.</p>
+          <>
+            <p class="mt-2 text-[0.97rem] text-muted-foreground">
+              <span class="mr-2 inline-block rounded-full bg-muted px-2.5 py-0.5 text-sm font-bold text-foreground">Zaprti preizkus</span>
+              Prometnik je v Googlu Play na voljo preizkuševalcem. Posodablja se prek trgovine.
+            </p>
+            <ol class="mt-4 space-y-3 text-[0.97rem]">
+              <li class="flex gap-3">
+                <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">1</span>
+                <span>
+                  Z Google računom, ki ga uporabljate na telefonu, se pridružite skupini
+                  <a href={TESTERS_GROUP_URL} class="font-semibold text-primary underline underline-offset-4">prometnik-testers</a>.
+                </span>
+              </li>
+              <li class="flex gap-3">
+                <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">2</span>
+                <span>
+                  Odprite <a href={PLAY_OPT_IN_URL} class="font-semibold text-primary underline underline-offset-4">stran za preizkuševalce v Googlu Play</a>,
+                  tapnite »Postani preizkuševalec« in nato prenesite aplikacijo iz trgovine.
+                </span>
+              </li>
+            </ol>
+            <p class="mt-3 text-sm text-muted-foreground">
+              Če ste aplikacijo že namestili kot APK, jo najprej odstranite: različici iz trgovine in z GitHuba se ne posodabljata ena čez drugo.
+            </p>
+          </>
         )}
       </article>
 
