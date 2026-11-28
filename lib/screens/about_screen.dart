@@ -1,8 +1,11 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../config/testing.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -42,6 +45,23 @@ class _AboutScreenState extends State<AboutScreen> {
       );
     }
   }
+
+  /// Testing runs through Google Play, so only Android users can join.
+  bool get _showTesting =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  Widget _sectionHeader(String text, ColorScheme cs) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+    child: Text(
+      text,
+      style: TextStyle(
+        color: cs.onSurfaceVariant,
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.4,
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -85,20 +105,36 @@ class _AboutScreenState extends State<AboutScreen> {
               'samodejno osvežujejo.',
               style: TextStyle(color: cs.onSurfaceVariant),
             ),
-            const SizedBox(height: 24),
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
-              child: Text(
-                'VIRI PODATKOV',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
+            if (_showTesting) ...[
+              const SizedBox(height: 24),
+              const Divider(),
+              _sectionHeader('PREIZKUŠANJE', cs),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                child: Text(
+                  'Nove različice preizkusi pred drugimi: pridruži se skupini '
+                  'preizkuševalcev, nato v Googlu Play potrdi sodelovanje.',
+                  style: TextStyle(color: cs.onSurfaceVariant),
                 ),
               ),
-            ),
+              AdaptiveListTile(
+                leading: const Icon(Icons.group_add_outlined),
+                title: const Text('1. Pridruži se skupini'),
+                subtitle: const Text('Google Skupine: prometnik-testers'),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: () => _open(testersGroupUrl),
+              ),
+              AdaptiveListTile(
+                leading: const Icon(Icons.science_outlined),
+                title: const Text('2. Postani preizkuševalec'),
+                subtitle: const Text('Google Play'),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: () => _open(playTestingOptInUrl),
+              ),
+            ],
+            const SizedBox(height: 24),
+            const Divider(),
+            _sectionHeader('VIRI PODATKOV', cs),
             AdaptiveListTile(
               leading: const Icon(Icons.warning_amber_rounded),
               title: const Text('Dogodki, kamere, potovalni časi'),
