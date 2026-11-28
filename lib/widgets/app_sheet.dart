@@ -313,3 +313,33 @@ class AppSheetCloseButton extends StatelessWidget {
     );
   }
 }
+
+/// A full-width tinted button for a sheet's link (open in browser, more
+/// information). Plain Flutter on purpose: native iOS 26 buttons are platform
+/// views, which clip the sheet's pinned header while it scrolls.
+class SheetLinkButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final Widget child;
+
+  const SheetLinkButton({
+    super.key,
+    required this.onPressed,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: cs.primary.withValues(alpha: .16),
+        foregroundColor: cs.primary,
+        minimumSize: const Size.fromHeight(50),
+        shape: const StadiumBorder(),
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      ),
+      child: child,
+    );
+  }
+}

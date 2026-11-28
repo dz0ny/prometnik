@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -81,9 +80,10 @@ class _CameraSheetState extends State<CameraSheet> {
         const SizedBox(height: 12),
         _CameraInfoCard(camera: cam),
         const SizedBox(height: 16),
-        AdaptiveButton.child(
+        // Flutter, not the native iOS 26 button: a native view inside the
+        // scrolling sheet clipped the header on devices.
+        SheetLinkButton(
           onPressed: () => unawaited(_openBrowser()),
-          style: AdaptiveButtonStyle.tinted,
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [

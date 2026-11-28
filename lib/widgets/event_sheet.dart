@@ -1,4 +1,3 @@
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -112,7 +111,9 @@ class EventSheet extends StatelessWidget {
         ],
         if (event.infoUrl.isNotEmpty) ...[
           const SizedBox(height: 16),
-          AdaptiveButton.child(
+          // Flutter, not the native iOS 26 button: a native view inside the
+          // scrolling sheet clipped the header on devices.
+          SheetLinkButton(
             onPressed: () => _openInfo(context),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
