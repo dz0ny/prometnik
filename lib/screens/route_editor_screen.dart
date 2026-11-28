@@ -9,6 +9,8 @@ import 'package:latlong2/latlong.dart';
 import '../providers/routes_provider.dart';
 import '../routing/road_graph.dart';
 import '../routing/saved_route.dart';
+import '../services/notifications_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/base_tile_layer.dart';
 import '../widgets/sheet_snack.dart';
 import 'place_search_screen.dart';
@@ -201,6 +203,17 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
             departureMinutes: _days.isEmpty ? null : _departure,
           ),
         );
+    // Warnings before departure come as notifications.
+    if (_days.isNotEmpty && _departure != null) {
+      unawaited(
+        NotificationsService.instance.requestPermission().catchError((
+          Object e,
+        ) {
+          debugPrint('notification permission failed: $e');
+          return false;
+        }),
+      );
+    }
     Navigator.of(context).pop();
   }
 
@@ -241,7 +254,7 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
                   16,
                   12,
                   16,
-                  24 + MediaQuery.paddingOf(context).bottom,
+                  24 + AppTheme.bottomBarContentInset(context),
                 ),
                 children: [
                   TextField(

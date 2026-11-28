@@ -44,6 +44,7 @@ dependencies:
   geolocator: ^14.0.1
   flutter_local_notifications: ^23.0.4
   ota_update: ^7.1.0
+  workmanager: ^0.10.10
 
 dev_dependencies:
   flutter_test:

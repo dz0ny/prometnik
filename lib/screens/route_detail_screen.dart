@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/routes_provider.dart';
 import '../routing/route_warnings.dart';
+import '../theme/app_theme.dart';
 import '../widgets/base_tile_layer.dart';
 import '../widgets/my_routes_section.dart' show departureLabel, severityColor;
 import 'route_editor_screen.dart';
@@ -148,7 +149,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                   12,
                   12,
                   12,
-                  24 + MediaQuery.paddingOf(context).bottom,
+                  24 + AppTheme.bottomBarContentInset(context),
                 ),
                 children: [
                   Padding(

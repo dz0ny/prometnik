@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'providers/alerts_controller.dart';
 import 'providers/burja_provider.dart';
@@ -15,6 +19,7 @@ import 'providers/weather_provider.dart';
 import 'router/app_router.dart';
 import 'screens/intro_wizard_screen.dart';
 import 'services/map_tile_cache_service.dart';
+import 'routing/route_check.dart';
 import 'services/prefs.dart';
 import 'theme/app_theme.dart';
 
@@ -22,8 +27,50 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Prefs.init();
   await MapTileCacheService.instance.initialize();
+  unawaited(_scheduleRouteChecks());
   // The composition root: every provider lives in this one scope.
   runApp(const ProviderScope(child: PrometApp()));
+}
+
+/// Background check of saved routes before their departure (Android about
+/// every 15 minutes; iOS when the system allows background refresh).
+Future<void> _scheduleRouteChecks() async {
+  if (kIsWeb ||
+      !(defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS)) {
+    return;
+  }
+  try {
+    await Workmanager().initialize(routeCheckDispatcher);
+    await Workmanager().registerPeriodicTask(
+      routeCheckTask,
+      routeCheckTask,
+      frequency: const Duration(minutes: 15),
+      constraints: Constraints(networkType: NetworkType.connected),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+    );
+  } on Exception catch (e) {
+    debugPrint('route checks not scheduled: $e');
+  }
+  // And now, in case a departure is close.
+  await runRouteCheck().catchError((Object e) {
+    debugPrint('route check failed: $e');
+  });
+}
+
+/// Entry point of the background task (its own isolate).
+@pragma('vm:entry-point')
+void routeCheckDispatcher() {
+  Workmanager().executeTask((task, _) async {
+    WidgetsFlutterBinding.ensureInitialized();
+    try {
+      await Prefs.init();
+      await runRouteCheck();
+    } on Exception catch (e) {
+      debugPrint('background route check failed: $e');
+    }
+    return true;
+  });
 }
 
 class PrometApp extends StatefulWidget {
@@ -132,6 +179,11 @@ class _PollingLifecycleState extends ConsumerState<_PollingLifecycle> {
   }
 
   void _resume() {
+    unawaited(
+      runRouteCheck().catchError((Object e) {
+        debugPrint('route check failed: $e');
+      }),
+    );
     // start() refreshes immediately and re-arms the timer (no-op if running).
     for (final feed in _feeds) {
       feed.start();

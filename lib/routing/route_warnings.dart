@@ -207,7 +207,10 @@ List<RouteWarning> routeWarnings(
       from: fromName,
       to: toName,
     );
-    var severity = e.isRoadClosed ? 3 : (e.isJam ? 2 : 1);
+    // A closed rest area is flagged as a closure but the road is open.
+    final restArea = _contains('${e.title} ${e.description}', 'počivališč');
+    final closed = e.isRoadClosed && !restArea;
+    var severity = closed ? 3 : (e.isJam ? 2 : 1);
     if (opposite) severity = 1;
     final delay = e.delaySeconds > 60
         ? ' · +${(e.delaySeconds / 60).round()} min'
@@ -219,7 +222,7 @@ List<RouteWarning> routeWarnings(
     out.add(
       RouteWarning(
         id: 'ev:${e.id}',
-        kind: e.isRoadClosed
+        kind: closed
             ? RouteWarningKind.closure
             : e.isJam
             ? RouteWarningKind.jam
