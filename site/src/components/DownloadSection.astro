@@ -1,6 +1,6 @@
 ---
 import { Smartphone, Apple, Store, Download } from "lucide-react";
-import { LATEST_RELEASE_URL, RELEASES_URL } from "@/lib/site";
+import { LATEST_APK_URL, RELEASES_URL } from "@/lib/site";
 
 // At launch: set these once the listings are public. While null, the card
 // shows "Kmalu" and links nowhere.
@@ -31,7 +31,7 @@ const APP_STORE_URL: string | null = null;
         </div>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row">
           <a
-            href={LATEST_RELEASE_URL}
+            href={LATEST_APK_URL}
             class="inline-flex h-13 whitespace-nowrap items-center justify-center gap-2.5 rounded-full bg-primary px-7 font-bold text-primary-foreground transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-primary-hover active:scale-[0.98]"
           >
             <Download className="size-5" aria-hidden="true" />

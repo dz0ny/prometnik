@@ -9,6 +9,8 @@ export const SITE_DESCRIPTION =
 export const GITHUB_URL = "https://github.com/dz0ny/prometnik";
 export const RELEASES_URL = "https://github.com/dz0ny/prometnik/releases";
 export const LATEST_RELEASE_URL = "https://github.com/dz0ny/prometnik/releases/latest";
+/** The newest APK itself; release assets have no version in their name. */
+export const LATEST_APK_URL = "https://github.com/dz0ny/prometnik/releases/latest/download/prometnik-android.apk";
 export const ISSUES_URL = "https://github.com/dz0ny/prometnik/issues";
 export const NEW_ISSUE_URL = "https://github.com/dz0ny/prometnik/issues/new";
 

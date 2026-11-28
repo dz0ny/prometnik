@@ -1,6 +1,6 @@
 import type { SoftwareApplication, WithContext } from "schema-dts";
 import screen from "@/assets/screens/05-iga-vas.webp";
-import { LATEST_RELEASE_URL, SITE_DESCRIPTION, SITE_NAME } from "./site";
+import { LATEST_APK_URL, LATEST_RELEASE_URL, SITE_DESCRIPTION, SITE_NAME } from "./site";
 
 /** SoftwareApplication JSON-LD for the homepage: free Android app, Slovenian. */
 export function appSchema(site: URL | undefined): WithContext<SoftwareApplication> {
@@ -16,7 +16,7 @@ export function appSchema(site: URL | undefined): WithContext<SoftwareApplicatio
 		operatingSystem: "Android",
 		inLanguage: "sl",
 		isAccessibleForFree: true,
-		downloadUrl: LATEST_RELEASE_URL,
+		downloadUrl: LATEST_APK_URL,
 		installUrl: LATEST_RELEASE_URL,
 		screenshot: new URL(screen.src, site ?? "https://prometnik.dz0ny.dev").href,
 		offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },

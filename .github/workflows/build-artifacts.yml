@@ -69,19 +69,20 @@ jobs:
 
       - name: Prepare Android artifacts
         run: |
-          RAW_TAG="${{ github.event.release.tag_name || github.ref_name }}"
-          TAG="${RAW_TAG//\//-}"
-          cp build/app/outputs/flutter-apk/app-direct-release.apk "${APP_NAME}-${TAG}-android.apk"
-          cp build/app/outputs/bundle/playRelease/app-play-release.aab "${APP_NAME}-${TAG}-play.aab"
-          ls -lah "${APP_NAME}-${TAG}-android.apk" "${APP_NAME}-${TAG}-play.aab"
+          # No version in the names: the website links to
+          # releases/latest/download/prometnik-android.apk, which only works
+          # with a stable file name. The release tag carries the version.
+          cp build/app/outputs/flutter-apk/app-direct-release.apk "${APP_NAME}-android.apk"
+          cp build/app/outputs/bundle/playRelease/app-play-release.aab "${APP_NAME}-play.aab"
+          ls -lah "${APP_NAME}-android.apk" "${APP_NAME}-play.aab"
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v7
         with:
           name: release-android
           path: |
-            ${{ env.APP_NAME }}-*-android.apk
-            ${{ env.APP_NAME }}-*-play.aab
+            ${{ env.APP_NAME }}-android.apk
+            ${{ env.APP_NAME }}-play.aab
           if-no-files-found: error
 
   upload-release-assets:
