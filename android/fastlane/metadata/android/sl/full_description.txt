@@ -1,0 +1,33 @@
+Poglejte cesto, preden se odpeljete.
+
+Prometnik na enem mestu zbere vse, kar potrebujete pred vožnjo po Sloveniji: zapore, zastoje, nesreče in dela na cesti, slike s kamer, vreme ob cesti, stanje cestišča in potovalne čase med mesti. Brezplačno, brez računa in brez oglasov.
+
+PROMETNI DOGODKI NA ZEMLJEVIDU
+• Zapore, zastoji, nesreče, dela na cesti in opozorila o burji iz DARS / promet.si
+• Prizadeti odsek je narisan na zemljevidu
+• Satelitski posnetki z oznakami cest, OpenStreetMap ali Mapy.cz
+
+KAMERE
+• Okoli 170 cestnih kamer DARS, DRSC in ARSO
+• Pri kamerah vremenskih postaj 24-urna zgodovina po urah
+• Postaje z več kamerami pokažejo vse poglede
+
+VREME IN STANJE CESTIŠČA
+• Temperatura, vlaga, veter, sunki, smer vetra in padavine s postaj ob cesti
+• 24-urni grafi temperature, vetra in padavin
+• Temperatura cestišča, točka zmrzovanja, rosišče, vodni film, slanost in opozorilo na poledico
+
+POTOVALNI ČASI IN POČIVALIŠČA
+• Potovalni časi DARS med mesti z zamudami in mini zemljevidom poti
+• Počivališča z zasedenostjo parkirišč in mesti za tovornjake
+
+V BLIŽINI IN OBVESTILA
+• Zavihek Bližina pokaže dogodke in kamere okoli vas
+• Obvestila za ceste, ki jih spremljate
+• Pripomoček na začetnem zaslonu za izbrano postajo
+
+ZASEBNOST
+Lokacija se uporablja samo v napravi, obvestila so lokalna. Ni računa, ni sledenja, ni oglasov.
+
+Prometnik ni uradna aplikacija DARS. Za uradna prometna obvestila obiščite promet.si.
+Podatki: DARS / promet.si, DRSI, ARSO, OpenStreetMap.

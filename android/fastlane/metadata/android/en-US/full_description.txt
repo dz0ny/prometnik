@@ -1,0 +1,33 @@
+Check the road before you leave.
+
+Prometnik brings together everything you need before driving in Slovenia: closures, congestion, accidents and roadworks, road webcams, roadside weather, road-surface conditions and travel times between cities. Free, no account, no ads.
+
+TRAFFIC EVENTS ON THE MAP
+• Closures, congestion, accidents, roadworks and bora (burja) wind warnings from DARS / promet.si
+• The affected road section is drawn on the map
+• Satellite imagery with road labels, OpenStreetMap or Mapy.cz
+
+WEBCAMS
+• About 170 DARS, DRSC and ARSO road webcams
+• 24-hour hourly history for weather-station cameras
+• Stations with several cameras show every view
+
+ROAD WEATHER AND SURFACE
+• Temperature, humidity, wind, gusts, wind direction and rain from roadside stations
+• 24-hour temperature, wind and rain charts
+• Road temperature, freezing point, dew point, water film, salinity and ice warning
+
+TRAVEL TIMES AND REST AREAS
+• DARS travel times between cities with delays and a route mini-map
+• Rest areas with parking occupancy and truck spaces
+
+NEARBY AND ALERTS
+• The Nearby tab shows events and webcams around you
+• Notifications for the roads you watch
+• Home-screen widget for a chosen station
+
+PRIVACY
+Location is used on the device only; notifications are local. No account, no tracking, no ads.
+
+Prometnik is not an official DARS app. For official traffic information visit promet.si.
+Data: DARS / promet.si, DRSI, ARSO, OpenStreetMap.
