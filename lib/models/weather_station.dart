@@ -67,7 +67,13 @@ class WeatherStation {
 
   /// `coordinateX` is latitude, `coordinateY` is longitude in the source data.
   final LatLng position;
+
+  /// The station's (first) camera; empty without one.
   final String cameraLink;
+
+  /// Every camera of the station; some have two or three looking in
+  /// different directions. Empty means just [cameraLink].
+  final List<String> cameraLinks;
   final WeatherReading? weather;
 
   const WeatherStation({
@@ -76,7 +82,13 @@ class WeatherStation {
     required this.position,
     required this.cameraLink,
     required this.weather,
+    this.cameraLinks = const [],
   });
+
+  /// All camera URLs, [cameraLink] first.
+  List<String> get cameras => cameraLinks.isNotEmpty
+      ? cameraLinks
+      : (cameraLink.isEmpty ? const [] : [cameraLink]);
 
   double? get temperatureC => weather?.outdoorTemperatureC;
   bool get hasWeather => weather != null;
@@ -106,10 +118,24 @@ class WeatherStation {
       stationId: (json['stationId'] as num).toInt(),
       name: (json['name'] as String? ?? '').trim(),
       position: LatLng(lat, lng),
-      cameraLink: json['cameraLink'] as String? ?? '',
+      cameraLink: firstCameraUrl(json['cameraLink'] as String?),
+      cameraLinks: cameraUrls(json['cameraLink'] as String?),
       weather: json['weather'] == null
           ? null
           : WeatherReading.fromJson(json['weather'] as Map<String, dynamic>),
     );
   }
+}
+
+/// The cameras of a feed field: some stations list several cameras in one
+/// field, joined with `;` ("a.jpg;b.jpg").
+List<String> cameraUrls(String? raw) => [
+  for (final part in (raw ?? '').split(';'))
+    if (part.trim().isNotEmpty) part.trim(),
+];
+
+/// The first camera of a feed field (see [cameraUrls]); empty without one.
+String firstCameraUrl(String? raw) {
+  final all = cameraUrls(raw);
+  return all.isEmpty ? '' : all.first;
 }

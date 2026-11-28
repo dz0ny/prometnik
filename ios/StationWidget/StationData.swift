@@ -72,7 +72,9 @@ enum StationFeed {
         return StationReading(
             stationId: id,
             name: name.isEmpty ? "Postaja" : name,
-            cameraLink: (j["cameraLink"] as? String) ?? "",
+            // Some stations list several cameras joined with ";": the first.
+            cameraLink: ((j["cameraLink"] as? String) ?? "").split(separator: ";")
+                .map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? "",
             timestamp: (w["timestamp"] as? String).flatMap { timeParser.date(from: $0) },
             temp: d("outdoorTemperatureC"),
             minTemp: d("minOutdoorTemperatureC"),

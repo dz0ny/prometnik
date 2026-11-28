@@ -92,6 +92,9 @@ class InteractiveWebcam extends StatefulWidget {
   /// live frame is back, so the page can show the readings of that hour.
   final ValueChanged<DateTime?>? onSnapshotChanged;
 
+  /// Shown between the image and the history strip (e.g. a camera picker).
+  final Widget? belowImage;
+
   const InteractiveWebcam({
     super.key,
     required this.title,
@@ -106,6 +109,7 @@ class InteractiveWebcam extends StatefulWidget {
     this.showRefreshButton = true,
     this.showHistory = false,
     this.onSnapshotChanged,
+    this.belowImage,
   });
 
   @override
@@ -176,21 +180,25 @@ class _InteractiveWebcamState extends State<InteractiveWebcam> {
   Widget build(BuildContext context) {
     final image = _buildImage(context);
     final urlFor = widget.urlFor;
-    if (!widget.showHistory || urlFor == null) return image;
+    final below = widget.belowImage;
+    final history = widget.showHistory && urlFor != null;
+    if (!history && below == null) return image;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         image,
-        WebcamHistoryStrip(
-          url: urlFor(_key),
-          selected: _snapshot,
-          refreshToken: _liveAt,
-          onSelect: (f) {
-            setState(() => _snapshot = f);
-            widget.onSnapshotChanged?.call(f?.at);
-          },
-        ),
+        ?below,
+        if (history)
+          WebcamHistoryStrip(
+            url: urlFor(_key),
+            selected: _snapshot,
+            refreshToken: _liveAt,
+            onSelect: (f) {
+              setState(() => _snapshot = f);
+              widget.onSnapshotChanged?.call(f?.at);
+            },
+          ),
       ],
     );
   }

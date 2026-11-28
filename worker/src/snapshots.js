@@ -65,8 +65,11 @@ export function camerasFromFeeds(bodies) {
     // Both feeds are JSON; a regex over the text tolerates shape changes.
     const re = /"(?:Image|cameraLink)"\s*:\s*"(https?:[^"]+)"/g;
     for (const m of body.matchAll(re)) {
-      const cam = cameraUrl(m[1].replace(/\\\//g, '/'));
-      if (cam) urls.add(cam.toString());
+      // Some stations list several cameras in one field, joined with ';'.
+      for (const part of m[1].replace(/\\\//g, '/').split(';')) {
+        const cam = cameraUrl(part.trim());
+        if (cam) urls.add(cam.toString());
+      }
     }
   }
   return [...urls];

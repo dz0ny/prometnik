@@ -1,6 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
 import '../services/webcam_proxy.dart';
+import 'weather_station.dart' show firstCameraUrl;
 
 /// Road-condition risk at a DRSI road weather station, worst last.
 enum RoadRisk { ok, caution, slippery, ice }
@@ -153,7 +154,7 @@ class DrsiStation {
                 .map((s) => s.trim())
                 .where((s) => s.isNotEmpty)
                 .toList(),
-      webcamUrl: str('webcamurl'),
+      webcamUrl: firstCameraUrl(str('webcamurl')),
       outage: cell('olddata') == 1 || str('olddata') == '1',
     );
   }

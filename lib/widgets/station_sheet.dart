@@ -11,6 +11,8 @@ import '../providers/weather_provider.dart';
 import '../services/weather_history_service.dart';
 import 'app_sheet.dart';
 import 'drsi_sheet.dart' show drsiRiskColor;
+import '../services/webcam_proxy.dart';
+import 'camera_picker.dart';
 import 'interactive_webcam.dart';
 import 'station_overview.dart';
 import 'weather_details.dart';
@@ -94,6 +96,9 @@ class _StationSheetState extends ConsumerState<StationSheet> {
   DateTime? _snapshotAt;
   List<WeatherPoint> _history = const [];
 
+  /// Which of the station's cameras is shown large (some have up to three).
+  int _camera = 0;
+
   int? get stationId => widget.stationId;
   String? get roadId => widget.roadId;
 
@@ -162,7 +167,10 @@ class _StationSheetState extends ConsumerState<StationSheet> {
     final roadOnly = id == null;
     final updated = roadOnly ? road?.measuredAt : station.weather?.timestamp;
     final name = station.name.isEmpty ? 'Postaja' : station.name;
-    final hasCamera = station.cameraLink.isNotEmpty;
+    final cameras = station.cameras;
+    final hasCamera = cameras.isNotEmpty;
+    final cameraIndex = _camera < cameras.length ? _camera : 0;
+    final camera = hasCamera ? cameras[cameraIndex] : '';
     // Camera-only stations have no reading time: no subtitle at all rather
     // than "ni podatka".
     final snapshotAt = roadOnly ? null : _snapshotAt;
@@ -188,8 +196,20 @@ class _StationSheetState extends ConsumerState<StationSheet> {
       children: [
         if (hasCamera) ...[
           InteractiveWebcam(
+            // A new camera starts live, with its own history.
+            key: ValueKey(camera),
             title: name,
-            urlFor: station.cameraUrlWithBuster,
+            urlFor: (b) => proxiedWebcamUrl(camera, buster: b),
+            belowImage: cameras.length < 2
+                ? null
+                : CameraPicker(
+                    urls: cameras,
+                    selected: cameraIndex,
+                    onSelect: (i) => setState(() {
+                      _camera = i;
+                      _snapshotAt = null;
+                    }),
+                  ),
             autoRefresh: const Duration(seconds: 60),
             // The worker keeps 24-hour history for weather-station cameras.
             showHistory: !roadOnly,

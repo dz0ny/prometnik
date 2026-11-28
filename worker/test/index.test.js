@@ -132,3 +132,13 @@ test('repairJpeg appends the end marker to a cut-off JPEG only', () => {
   assert.equal(repairJpeg(cut.buffer, 'image/png').byteLength, 2048);
   assert.equal(repairJpeg(new Uint8Array([0xff, 0xd8, 0]).buffer, 'image/jpeg').byteLength, 3);
 });
+
+test('camerasFromFeeds splits fields that list several cameras', () => {
+  const body = JSON.stringify([
+    { cameraLink: 'https://kamere.dars.si/k/A_0001.jpg;https://kamere.dars.si/k/B_0001.jpg' },
+  ]);
+  assert.deepEqual(camerasFromFeeds([body]).sort(), [
+    'https://kamere.dars.si/k/A_0001.jpg',
+    'https://kamere.dars.si/k/B_0001.jpg',
+  ]);
+});
