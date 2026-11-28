@@ -127,6 +127,11 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       minimizeBehavior: TabBarMinimizeBehavior.never,
       body: selfUpdates
           ? Stack(
+              // Scaffold gives the body loose constraints, and a loose Stack
+              // takes the size of its non-positioned children: the banner's
+              // SizedBox.shrink() when there is no update, which collapsed
+              // the whole body to 0×0 (blank tabs on Android).
+              fit: StackFit.expand,
               children: [
                 Positioned.fill(child: widget.navigationShell),
                 const UpdateBanner(),
