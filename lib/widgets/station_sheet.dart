@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/drsi_station.dart';
+import '../models/traffic_camera.dart';
 import '../models/weather_station.dart';
+import '../providers/cameras_provider.dart';
 import '../providers/drsi_provider.dart';
 import '../providers/weather_provider.dart';
 import '../services/weather_history_service.dart';
@@ -171,6 +173,14 @@ class _StationSheetState extends ConsumerState<StationSheet> {
     final hasCamera = cameras.isNotEmpty;
     final cameraIndex = _camera < cameras.length ? _camera : 0;
     final camera = hasCamera ? cameras[cameraIndex] : '';
+    // Names of a station's cameras from the DARS camera feed.
+    final camInfo = cameras.length < 2
+        ? const <TrafficCamera?>[]
+        : ref.watch(
+            camerasProvider.select(
+              (c) => [for (final u in cameras) cameraForImage(c.items, u)],
+            ),
+          );
     // Camera-only stations have no reading time: no subtitle at all rather
     // than "ni podatka".
     final snapshotAt = roadOnly ? null : _snapshotAt;
@@ -204,6 +214,8 @@ class _StationSheetState extends ConsumerState<StationSheet> {
                 ? null
                 : CameraPicker(
                     urls: cameras,
+                    labels: [for (final c in camInfo) cameraShortLabel(c)],
+                    caption: camInfo[cameraIndex]?.description,
                     selected: cameraIndex,
                     onSelect: (i) => setState(() {
                       _camera = i;

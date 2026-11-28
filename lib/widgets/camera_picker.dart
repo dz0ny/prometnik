@@ -9,6 +9,12 @@ import 'webcam_thumbnail.dart' show webcamCacheBucket;
 /// image source per camera), so they stay current.
 class CameraPicker extends StatelessWidget {
   final List<String> urls;
+
+  /// Short names per camera (null = "Kamera N").
+  final List<String?> labels;
+
+  /// What the selected camera shows (its full DARS description), if known.
+  final String? caption;
   final int selected;
   final ValueChanged<int> onSelect;
 
@@ -17,26 +23,60 @@ class CameraPicker extends StatelessWidget {
     required this.urls,
     required this.selected,
     required this.onSelect,
+    this.labels = const [],
+    this.caption,
   });
 
   @override
   Widget build(BuildContext context) {
     final bucket = webcamCacheBucket();
+    final cs = Theme.of(context).colorScheme;
+    final text = caption;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          for (var i = 0; i < urls.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(
-              child: _Thumb(
-                url: proxiedWebcamUrl(urls[i], buster: bucket),
-                label: 'Kamera ${i + 1}',
-                selected: i == selected,
-                onTap: () => onSelect(i),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < urls.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: _Thumb(
+                    url: proxiedWebcamUrl(urls[i], buster: bucket),
+                    label:
+                        (i < labels.length ? labels[i] : null) ??
+                        'Kamera ${i + 1}',
+                    selected: i == selected,
+                    onTap: () => onSelect(i),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (text != null && text.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.videocam_outlined, size: 16, color: cs.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 13,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
         ],
       ),
     );
@@ -94,12 +134,26 @@ class _Thumb extends StatelessWidget {
                     size: 20,
                   ),
                 ),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: [0.4, 1],
+                      colors: [Colors.transparent, Color(0xA6000000)],
+                    ),
+                  ),
+                ),
                 Positioned(
                   left: 6,
+                  right: 6,
                   bottom: 4,
                   child: Text(
                     label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
+                      height: 1.15,
                       color: Colors.white,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,

@@ -44,8 +44,10 @@ bool _duplicatesStation(TrafficCamera camera, List<WeatherStation> stations) {
   for (final station in stations) {
     if (station.cameraLink.isEmpty) continue;
     // The very same picture is a duplicate wherever the feed places it
-    // (DARS often lists a station's camera a few hundred metres away).
-    if (image.isNotEmpty && image == _imageId(station.cameraLink)) {
+    // (DARS often lists a station's camera a few hundred metres away),
+    // including a station's second and third camera.
+    if (image.isNotEmpty &&
+        station.cameras.any((url) => image == _imageId(url))) {
       return true;
     }
     if (!station.hasWeather) continue;
@@ -58,3 +60,29 @@ bool _duplicatesStation(TrafficCamera camera, List<WeatherStation> stations) {
 String _imageId(String url) => url.isEmpty
     ? ''
     : cameraKey(url).toLowerCase().replaceFirst(RegExp(r'^https?://'), '');
+
+/// The DARS feed's entry for the camera picture [url], if it lists it; it
+/// carries the camera's name and view ("…, pogled proti Planici").
+TrafficCamera? cameraForImage(List<TrafficCamera> cameras, String url) {
+  final id = _imageId(url);
+  if (id.isEmpty) return null;
+  for (final c in cameras) {
+    if (_imageId(c.imageUrl) == id) return c;
+  }
+  return null;
+}
+
+/// A short label telling a station's cameras apart: the last part of the
+/// DARS description ("R1-202, Rateče - Podkoren, krožišče Rateče" →
+/// "krožišče Rateče"), else the title; null without either.
+String? cameraShortLabel(TrafficCamera? camera) {
+  if (camera == null) return null;
+  final parts = camera.description
+      .split(',')
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toList();
+  if (parts.isNotEmpty) return parts.last;
+  final title = camera.title.trim();
+  return title.isEmpty ? null : title;
+}
